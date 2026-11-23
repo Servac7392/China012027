@@ -19,7 +19,7 @@ const missingDetails = {
 const detailFields = {
  transfer: {label:'Переезд', fields:{route:'Откуда и куда', transport:'Вид транспорта', time:'Дата и местное время'}},
  ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта', url:'Ссылка на отель'}},
- hotel: {label:'Отель', fields:{name:'Название отеля', address:'Адрес', stay:'Даты заезда и выезда', price:'Цена и валюта'}}
+ hotel: {label:'Отель', fields:{name:'Название отеля', address:'Адрес', stay:'Даты заезда и выезда', price:'Цена и валюта', url:'Ссылка на отель'}}
 };
 const detailKey = 'china-trip-details-v1';
 function tripDetails(){
