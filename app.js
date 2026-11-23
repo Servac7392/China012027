@@ -12,7 +12,7 @@ function favorites(){
  catch { return []; }
 }
 const missingDetails = {
- '17':['transfer','ticket'], '18–20':['transfer','ticket','hotel'],
+ '17':['transfer','ticket'], '18–20':['hotel'],
  '20':['transfer','ticket','hotel'], '21–22':[], '23–24':['transfer','ticket','hotel'],
  '25':['hotel'], '26':['ticket']
 };
@@ -35,7 +35,25 @@ function tripDetails(){
  for(const key of ['20:transfer','20:ticket']){
   if(!Object.hasOwn(records,key)&&backup[key]&&Object.values(backup[key]).some(Boolean))records[key]=backup[key];
  }
- return records;
+ // Older versions used both itinerary cards for transport. Reassign the view without rewriting browser storage.
+ const inboundCities=/ханчжоу|нанкин|чанчжоу|hangzhou|nanjing|changzhou/i;
+ const flightDestination=/чжанц|zhangjiajie|\bdyg\b/i;
+ const transferText=Object.values(records['18–20:transfer']||{}).join(' ');
+ const inboundTransfer=inboundCities.test(transferText)&&!flightDestination.test(transferText);
+ const shanghaiEntries=[];
+ for(const type of ['transfer','ticket']){
+  const key='18–20:'+type;
+  const record=records[key];
+  const values=Object.values(record||{}).filter(Boolean);
+  if(!values.length)continue;
+  const description=values.join(' ');
+  if(!flightDestination.test(description)&&(inboundTransfer||inboundCities.test(description)))continue;
+
+  const destination='20:'+type;
+  records[destination]={...record,...records[destination]};
+  shanghaiEntries.push(key);
+ }
+ return Object.fromEntries(Object.entries(records).filter(([key])=>!shanghaiEntries.includes(key)));
 }
 
 function linkedText(value){
@@ -55,6 +73,10 @@ function baseRecord(date,type){
 function detailCards(date){
  const types=[...(missingDetails[date]||[])], records=tripDetails();
  const day=days.find(d=>d[0]===date);
+ if(date==='18–20'){
+  const existing=['transfer','ticket'].filter(type=>Object.values(records[date+':'+type]||{}).some(Boolean));
+  types.unshift(...existing);
+ }
  if(day?.[5]&&!types.includes('hotel'))types.push('hotel');
  if(!types.length)return '';
  return '<div class="detail-list">'+types.map(type=>detailCard(date+':'+type,type,{...baseRecord(date,type),...records[date+':'+type]})).join('')+'</div>';
