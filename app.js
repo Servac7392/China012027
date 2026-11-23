@@ -5,7 +5,7 @@ const rub = n => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}
 const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const map = query => 'https://www.amap.com/search?query=' + encodeURIComponent(query);
 const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
-const hero = (title,sub,extra='',style='') => '<div class="hero'+(style?' '+style:'')+'"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p>'+extra+'</div>';
+const hero = (title,sub,style='') => '<div class="hero'+(style?' '+style:'')+'"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p>'+'</div>';
 const cityCards = () => '<div class="grid">'+Object.entries(cities).map(([id,c])=>'<a class="card citylink" href="#city/'+id+'"><p class="date">'+c.dates+'</p><h3>'+c.name+'</h3><span class="muted">Маршруты и 10 мест</span></a>').join('')+'</div>';
 function favorites(){
  try { const value=JSON.parse(localStorage.getItem('china-trip-favorites')||'[]'); return Array.isArray(value)?value:[]; }
@@ -22,6 +22,10 @@ const detailFields = {
  ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта', url:'Ссылка на билет'}},
  hotel: {label:'Отель', fields:{name:'Название отеля', address:'Адрес',addressZh:'Адрес для такси на китайском', stay:'Даты заезда и выезда', price:'Цена и валюта', url:'Ссылка на отель'}}
 };
+const flightBookings=[
+ {days:['15','16'],totalRub:31324},
+ {days:['25','26'],totalRub:60306}
+];
 const detailKey = 'china-trip-details-v1';
 const detailBackupKey = 'china-trip-details-backup-v1';
 function readTripDetails(key){
@@ -117,9 +121,14 @@ function detailCards(date){
   return detailCard(key,type,record);
  }).join('')+'</div>';
 }
+const itineraryIcons={
+ flight:'<path d="M17 21v-8l2.8-2.8a2 2 0 0 0-2.8-2.8L14 10H6l-4 4h7l-4 4H3l-1 1 3 1 1 3 1-1v-2l4-4v7z"/>',
+ stay:'<path d="M3 18v-9m18 9v-7a2 2 0 0 0-2-2h-8v6M3 15h18M3 11h4a2 2 0 0 1 2 2v2m-6 3v2m18-2v2"/>'
+};
 function itineraryCard(page,id,label,name){
- return '<a class="detail-card itinerary-link" href="#'+page+'/'+id+'"><strong>'+label+'</strong>'+
-  (name?'<span>'+safe(name)+'</span>':'')+'<span aria-hidden="true">›</span></a>';
+ const icon='<svg class="itinerary-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+itineraryIcons[page]+'</svg>';
+ return '<a class="detail-card itinerary-link" href="#'+page+'/'+id+'">'+icon+'<div class="itinerary-text"><strong>'+label+'</strong>'+
+  (name?'<span>'+safe(name)+'</span>':'')+'</div><span aria-hidden="true" class="itinerary-chevron">›</span></a>';
 }
 function fieldsFor(date,type){
  if(type!=='ticket'||!Object.hasOwn(flights,date))return detailFields[type];
@@ -181,7 +190,8 @@ function yuanConversion(cents,rubCents){
 function expenseSummary(){
  const records=tripDetails();
  const bookedHotels=days.reduce((sum,day)=>sum+(day[5]&&!parseTripPrice(records[day[0]+':hotel']?.price)?Math.round(hotels[day[5]][2]*100):0),0);
- const categories={ticket:new Map([['RUB',3132400+6030600]]),hotel:new Map([['RUB',bookedHotels]]),transfer:new Map()};
+ const flightBookingCents=flightBookings.reduce((sum,booking)=>sum+booking.totalRub*100,0);
+ const categories={ticket:new Map([['RUB',flightBookingCents]]),hotel:new Map([['RUB',bookedHotels]]),transfer:new Map()};
  let uncounted=0;
  for(const [key,record] of Object.entries(records)){
   if(!record?.price||key==='26:ticket')continue;
@@ -216,7 +226,7 @@ function dayInfo(date,text){
  return text;
 }
 function trip(){
- return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','<p id="trip-countdown" class="countdown" hidden></p>','trip-hero')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><button type="button" data-export>Скачать резервную копию</button><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>';
+ return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section><div class="backup-download"><button type="button" data-export>Скачать резервную копию</button></div>';
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
 function savedHotel(id){
@@ -242,10 +252,13 @@ function flight(id){
  if(!day||!Object.hasOwn(flights,id))return '';
  const records=tripDetails(), key=id+':ticket';
  const record=detailRecord(id,'ticket',records[key]);
- const bundled=id==='20'?'':id==='15'||id==='16'?'Билет входит в заказ на 15–16 января.':'Билет входит в заказ на 25–26 января.';
+ const booking=flightBookings.find(item=>item.days.includes(id));
+ const cost=booking
+  ?'<div class="flight-cost"><strong>'+rub(booking.totalRub)+'</strong> · за оба рейса в одном заказе, '+booking.days.join('–')+' января</div>'
+  :record.price?'':'<p class="muted">Стоимость перелёта пока не указана.</p>';
  return hero(day[1],id+' января 2027 · Перелёт')+'<article class="card">'+backToTrip+
   '<p class="muted">Время вылета и прилёта указано местное. Недостающие данные можно добавить в карточку.</p>'+
-  detailCard(key,'ticket',record)+(bundled?'<p>'+bundled+'</p>':'')+
+  detailCard(key,'ticket',record)+cost+
   (id==='20'&&records['20:transfer']?detailCard('20:transfer','transfer',records['20:transfer']):'')+'</article>';
 }
 const dateInRussian=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'});
