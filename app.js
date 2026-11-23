@@ -31,6 +31,7 @@ const missingDetails = {
  '20':['transfer','ticket','hotel'], '21–22':[], '23–24':['transfer','ticket','hotel'],
  '25':['hotel'], '26':['ticket']
 };
+const transferPages=new Set(['17','23–24']);
 const detailFields = {
  transfer: {label:'Переезд', fields:{route:'Откуда и куда', transport:'Вид транспорта', time:'Дата и местное время'}},
  flight: {label:'Перелёт', fields:{service:'Номер рейса',airline:'Авиакомпания',departureAirport:'Аэропорт вылета',departureTime:'Местное время вылета',arrivalAirport:'Аэропорт прилёта',arrivalTime:'Местное время прилёта',time:'Уточнения по рейсу',price:'Цена и валюта',url:'Ссылка на билет'}},
@@ -154,9 +155,13 @@ function detailCards(date){
  if(Object.hasOwn(flights,date)&&!types.includes('ticket'))types.unshift('ticket');
  if(!types.length)return '';
  return '<div class="detail-list">'+types.map(type=>{
+  const id=encodeURIComponent(date);
+  if(transferPages.has(date)){
+   if(type==='transfer')return itineraryCard('transfer',id,'Переезд');
+   if(type==='ticket')return '';
+  }
   const key=date+':'+type;
   const record=detailRecord(date,type,records[key]);
-  const id=encodeURIComponent(date);
   if(type==='transfer'&&date==='20')return '';
   if(type==='ticket'&&Object.hasOwn(flights,date))return itineraryCard('flight',id,'Перелёт');
   if(type==='hotel')return itineraryCard('stay',id,'Отель',record.name);
@@ -165,6 +170,7 @@ function detailCards(date){
 }
 const itineraryIcons={
  flight:'<path d="M17 21v-8l2.8-2.8a2 2 0 0 0-2.8-2.8L14 10H6l-4 4h7l-4 4H3l-1 1 3 1 1 3 1-1v-2l4-4v7z"/>',
+ transfer:'<path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4"/>',
  stay:'<path d="M3 18v-9m18 9v-7a2 2 0 0 0-2-2h-8v6M3 15h18M3 11h4a2 2 0 0 1 2 2v2m-6 3v2m18-2v2"/>'
 };
 function itineraryCard(page,id,label,name){
@@ -267,11 +273,10 @@ function expenseSummary(){
  return '<section class="card expense-card"><h2>Известные расходы</h2><div class="expense-totals">'+amounts+'</div>'+yuanConversion(yuan,totals.get('RUB'))+'<h3>В составе итога</h3><ul>'+breakdown+'</ul><p class="muted">Для юаней укажите валюту, например 350 CNY или 350 юаней. Сумма без валюты считается рублёвой.</p>'+(uncounted?'<p class="muted">Цен вне итога: '+uncounted+'. Укажите сумму и валюту, например 350 CNY.</p>':'')+'</section>';
 }
 function dayInfo(date,text){
- if(Object.hasOwn(flights,date))return '';
+ if(Object.hasOwn(flights,date)||transferPages.has(date))return '';
  const records=tripDetails();
  const present=type=>Object.values(records[date+':'+type]||{}).some(Boolean);
  if(date==='18–20'&&present('hotel'))return present('transfer')?'':'Переезд из Ханчжоу уточнить';
- if(date==='23–24'&&present('hotel'))return 'Выезд из Manyuan Resort Hotel 23 января'+(present('transfer')?'':' · транспорт и время уточнить');
  return text;
 }
 function trip(){
@@ -290,6 +295,17 @@ function trip(){
   '<button type="button" data-export>Скачать резервную копию</button></div>'+localImportForm();
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
+function transferPage(id){
+ const day=days.find(([date])=>transferPages.has(date)&&encodeURIComponent(date)===id);
+ if(!day)return '';
+ const [date,title]=day, records=tripDetails();
+ const note=date==='23–24'?'<p class="muted">Выезд из Manyuan Resort Hotel 23 января.</p>':'';
+ const transfer=detailRecord(date,'transfer',records[date+':transfer']);
+ const ticket=detailRecord(date,'ticket',records[date+':ticket']);
+ return hero(title,date+' января 2027 · Переезд')+'<article class="card">'+backToTrip+note+
+  '<div class="detail-list">'+detailCard(date+':transfer','transfer',transfer)+
+  detailCard(date+':ticket','ticket',ticket)+'</div></article>';
+}
 function savedHotel(id){
  const day=days.find(([date])=>encodeURIComponent(date)===id);
  if(!day)return '';
@@ -469,6 +485,10 @@ function renderPage(){
  }
  if(page==='stay'||page==='flight'){
   const content=page==='stay'?savedHotel(id):flight(id);
+  if(content){app.innerHTML=content;return;}
+ }
+ if(page==='transfer'){
+  const content=transferPage(id);
   if(content){app.innerHTML=content;return;}
  }
  if(page==='cities'){app.innerHTML=hero('Города','Путеводители по маршруту')+cityCards();return;}
