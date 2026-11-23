@@ -63,13 +63,21 @@ function hotelNameLink(key,record){
  const url=[record.url,record.name,record.address,record.stay]
   .flatMap(value=>String(value||'').match(/https?:\/\/[^\s<>"']+/gi)||[])
   .find(value=>{
-   try{return Boolean(new URL(value).hostname);}
+   try{
+    const {hostname}=new URL(value);
+    return hostname==='trip.com'||hostname.endsWith('.trip.com');
+   }
    catch{return false;}
   });
  const name=String(record.name).replace(/https?:\/\/[^\s<>"']+/gi,'').trim()||'Открыть отель';
  if(url)return link(url,name,'plain accent');
  const date=key.split(':')[0];
- return '<a class="plain accent" href="#stay/'+encodeURIComponent(date)+'">'+safe(name)+'</a>';
+ const city=days.find(day=>day[0]===date)?.[4]||(date==='16'?'changzhou':'');
+ const tripCities={beijing:[1,'Beijing'],shanghai:[2,'Shanghai'],chongqing:[4,'Chongqing'],
+  hangzhou:[17,'Hangzhou'],zhangjiajie:[27,'Zhangjiajie'],changzhou:[213,'Changzhou']};
+ const [cityId,cityName]=tripCities[city]||[];
+ const search=new URLSearchParams({city:cityId,cityName,country:'1',searchWord:name});
+ return link(cityId?'https://ru.trip.com/hotels/list?'+search:'https://ru.trip.com/hotels/',name,'plain accent');
 }
 function baseRecord(date,type){
  const day=days.find(d=>d[0]===date);
@@ -152,24 +160,31 @@ function yuanConversion(cents,rubCents){
  return '<p><strong>Итого в рублях с учётом юаней: ≈ '+rub((rubCents+converted)/100)+'</strong></p><p>Сумма в юанях: ≈ '+rub(converted/100)+'</p><p class="muted">1 CNY = '+shownRate+' ₽ · курс на '+date+' · <a href="https://www.exchangerate-api.com/" target="_blank" rel="noopener noreferrer">ExchangeRate-API</a>'+(yuanRate.status==='error'?' · последнее доступное значение':'')+'</p>';
 }
 function expenseSummary(){
- const flights=31324+60306;
  const records=tripDetails();
  const bookedHotels=days.reduce((sum,day)=>sum+(day[5]&&!parseTripPrice(records[day[0]+':hotel']?.price)?Math.round(hotels[day[5]][2]*100):0),0);
- const totals=new Map([['RUB',flights*100+bookedHotels]]);
+ const categories={ticket:new Map([['RUB',3132400+6030600]]),hotel:new Map([['RUB',bookedHotels]]),transfer:new Map()};
  let uncounted=0;
- for(const [key,record] of Object.entries(tripDetails())){
-  if(!record?.price)continue;
-  const [date,type]=key.split(':');
-  if(!detailFields[type])continue;
-  if(key==='26:ticket')continue;
+ for(const [key,record] of Object.entries(records)){
+  if(!record?.price||key==='26:ticket')continue;
+  const type=key.split(':')[1];
+  if(!Object.hasOwn(categories,type))continue;
   const money=parseTripPrice(record.price);
   if(!money){uncounted++;continue;}
-  totals.set(money.currency,(totals.get(money.currency)||0)+money.cents);
+  const category=categories[type];
+  category.set(money.currency,(category.get(money.currency)||0)+money.cents);
+ }
+ const totals=new Map();
+ for(const category of Object.values(categories)){
+  for(const [currency,cents] of category)totals.set(currency,(totals.get(currency)||0)+cents);
  }
  const yuan=totals.get('CNY');
  if(yuan)void refreshYuanRate();
- const amounts=Array.from(totals,([currency,cents])=>'<strong>'+new Intl.NumberFormat('ru-RU',{style:'currency',currency}).format(cents/100)+'</strong>').join('');
- return '<section class="card expense-card"><h2>Известные расходы</h2><div class="expense-totals">'+amounts+'</div>'+yuanConversion(yuan,totals.get('RUB'))+'<p>Подтверждённые бронирования: авиабилеты '+rub(flights)+' · отели '+rub(bookedHotels/100)+'.</p><p class="muted">Для юаней укажите валюту, например 350 CNY или 350 юаней. Сумма без валюты считается рублёвой. Каждый подтверждённый заказ учтён один раз.</p>'+(uncounted?'<p class="muted">Цен вне итога: '+uncounted+'. Укажите сумму и валюту, например 350 CNY.</p>':'')+'</section>';
+ const format=([currency,cents])=>new Intl.NumberFormat('ru-RU',{style:'currency',currency}).format(cents/100);
+ const amounts=Array.from(totals,amount=>'<strong>'+format(amount)+'</strong>').join('');
+ const labels={ticket:'Авиабилеты и другие билеты',hotel:'Отели',transfer:'Переезды'};
+ const breakdown=Object.entries(categories).filter(([,category])=>category.size).map(([type,category])=>
+  '<li>'+labels[type]+' · '+Array.from(category,format).join(' + ')+'</li>').join('');
+ return '<section class="card expense-card"><h2>Известные расходы</h2><div class="expense-totals">'+amounts+'</div>'+yuanConversion(yuan,totals.get('RUB'))+'<h3>В составе итога</h3><ul>'+breakdown+'</ul><p class="muted">Для юаней укажите валюту, например 350 CNY или 350 юаней. Сумма без валюты считается рублёвой.</p>'+(uncounted?'<p class="muted">Цен вне итога: '+uncounted+'. Укажите сумму и валюту, например 350 CNY.</p>':'')+'</section>';
 }
 function hotelDates(id){
  const [, , , , checkIn,checkOut]=hotels[id];
