@@ -181,17 +181,19 @@ function fieldsFor(date,type){
 function detailCard(key,type,record){
   const {label,fields}=fieldsFor(key.split(':')[0],type);
   const pairs=Object.entries(fields);
-  const summary=pairs.filter(([name])=>record[name]&&(type!=='hotel'||(name!=='url'&&name!=='addressZh'))).map(([name,title])=>{
+  const flightFields=label==='Перелёт'?pairs.filter(([name])=>name!=='url'&&name!=='time').map(([name])=>name):[];
+  const missingFlightData=flightFields.some(name=>!record[name]);
+  const summary=pairs.filter(([name])=>(record[name]||flightFields.includes(name))&&(type!=='hotel'||(name!=='url'&&name!=='addressZh'))).map(([name,title])=>{
    const amount=name==='price'&&parseTripPrice(record[name]);
-   const value=amount?new Intl.NumberFormat('ru-RU',{style:'currency',currency:amount.currency}).format(amount.cents/100):record[name];
+   const value=amount?new Intl.NumberFormat('ru-RU',{style:'currency',currency:amount.currency}).format(amount.cents/100):record[name]||'Уточняется';
    return '<div><dt>'+safe(title)+'</dt><dd>'+linkedText(value)+'</dd></div>';
   }).join('');
   return '<section class="detail-card" data-detail="'+key+'" aria-label="'+label+'"><h4>'+label+'</h4>'+
    (summary?'<dl>'+summary+'</dl>':'')+
-   '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(summary?'Изменить':'Добавить данные')+'</summary>'+
+   '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(missingFlightData?'Добавить недостающие данные':summary?'Изменить':'Добавить данные')+'</summary>'+
    '<form data-trip-detail="'+key+'" data-revision="'+(sharedTrip.records[key]?.revision||'')+'"><div class="detail-fields">'+pairs.map(([name,title])=>
     '<label>'+safe(title)+(name==='addressZh'?'<textarea name="addressZh" lang="zh" rows="3">'+safe(record[name]||'')+'</textarea>':
-     '<input name="'+name+'" maxlength="200" value="'+safe(record[name]||'')+'">')+'</label>'
+     '<input name="'+name+'" maxlength="200"'+(name==='departureTime'||name==='arrivalTime'?' placeholder="ЧЧ:ММ"':'')+' value="'+safe(record[name]||'')+'">')+'</label>'
    ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p></section>';
 }
 function parseTripPrice(value){
@@ -299,19 +301,43 @@ function savedHotel(id){
   '<div class="actions">'+(address?link(map(address.split('\n').at(-1)),'На карте'):'')+
    hotelBookingLink(key,record)+(city?'<a class="btn" href="#city/'+city+'">Маршруты по городу</a>':'')+'</div></article>';
 }
+function shanghaiFlightRecord(ticket,transfer){
+ const service=ticket.service||transfer?.transport;
+ if(!/^FM\s*9343$/i.test(String(service||'').trim()))return {record:ticket,showTransfer:Boolean(transfer)};
+ const minutes=[ticket.departureTime,ticket.time,transfer?.time].map(departureTime).find(value=>value!==null);
+ const time=minutes===undefined?'':String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+ const record={
+  ...ticket, service,
+  airline:ticket.airline||'Shanghai Airlines',
+  departureAirport:ticket.departureAirport||'Шанхай, Пудун (PVG)',
+  departureTime:ticket.departureTime||time,
+  arrivalAirport:ticket.arrivalAirport||'Чжанцзяцзе, Хэхуа (DYG)'
+ };
+ const legacyTicket=/^\s*\d{1,2}:\d{2}\s+(?:PVG\s*)?(?:аэропорт\s*)?Пудун\s*$/i;
+ if(legacyTicket.test(record.time||''))record.time='';
+ const legacyRoute=/^\s*(?:Шанхай\s*)?(?:аэропорт\s*)?(?:Пудун|PVG)\s*$/i;
+ const legacyTime=/^\s*(?:20\s+января\s*(?:в\s+)?)?\d{1,2}:\d{2}\s*$/i;
+ const showTransfer=Boolean(transfer&&(
+  (transfer.route&&!legacyRoute.test(transfer.route))||
+  (transfer.time&&(!legacyTime.test(transfer.time)||departureTime(transfer.time)!==minutes))||
+  (transfer.transport&&transfer.transport.trim().replace(/\s/g,'').toUpperCase()!==service.trim().replace(/\s/g,'').toUpperCase())
+ ));
+ return {record,showTransfer};
+}
 function flight(id){
  const day=days.find(([date])=>date===id);
  if(!day||!Object.hasOwn(flights,id))return '';
  const records=tripDetails(), key=id+':ticket';
- const record=detailRecord(id,'ticket',records[key]);
+ const saved=detailRecord(id,'ticket',records[key]);
+ const {record,showTransfer}=id==='20'?shanghaiFlightRecord(saved,records['20:transfer']):{record:saved,showTransfer:false};
  const booking=flightBookings.find(item=>item.days.includes(id));
  const cost=booking
   ?'<div class="flight-cost"><strong>'+rub(booking.totalRub)+'</strong> · за оба рейса в одном заказе, '+booking.days.join('–')+' января</div>'
-  :record.price?'':'<p class="muted">Стоимость перелёта пока не указана.</p>';
+  :'';
  return hero(day[1],id+' января 2027 · Перелёт')+'<article class="card">'+backToTrip+
   '<p class="muted">Время вылета и прилёта указано местное. Недостающие данные можно добавить в карточку.</p>'+
   detailCard(key,'ticket',record)+cost+(id==='16'?'<p>'+safe(day[3].split(' · ')[0])+'</p>':'')+
-  (id==='20'&&records['20:transfer']?detailCard('20:transfer','transfer',records['20:transfer']):'')+'</article>';
+  (showTransfer?detailCard('20:transfer','transfer',records['20:transfer']):'')+'</article>';
 }
 const dateInRussian=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'});
 const dayPlural=new Intl.PluralRules('ru');
