@@ -4,6 +4,21 @@ const categories = {places:'Достопримечательности',food:'Е
 const rub = n => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(n);
 const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const map = query => 'https://www.amap.com/search?query=' + encodeURIComponent(query);
+function cityMapLink(query,city,label,style='btn'){
+ const prefix=city.mapName;
+ const keyword=query.startsWith(prefix)?query.slice(prefix.length).trim()||query:query;
+ const params=new URLSearchParams({keyword,city:prefix,view:'list',src:'China012027'});
+ const agent=navigator.userAgent||'';
+ if(/iPhone|iPad|iPod/i.test(agent))params.set('callnative','1');
+ const webUrl='https://uri.amap.com/search?'+params;
+ if(!/Android/i.test(agent))return link(webUrl,label,style);
+
+ const nativeKeyword=keyword===prefix?prefix:prefix+' '+keyword;
+ const native=new URLSearchParams({sourceApplication:'China012027',keywords:nativeKeyword,dev:'0'});
+ const intent='intent://poi?'+native+'#Intent;scheme=androidamap;package=com.autonavi.minimap;S.browser_fallback_url='+encodeURIComponent(webUrl)+';end';
+ return '<a class="'+style+'" href="'+safe(intent)+'">'+safe(label)+'</a>';
+}
+
 const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
 const cityPhotos={
  beijing:'beijing-cover.webp',
@@ -457,18 +472,18 @@ function startPoint(id,c){
 function routeCard(id,c,route){
  const [title,travel,indices]=route, origin=startPoint(id,c), mode=state.modes[id]||'walking';
  const stops=indices.map(i=>c.places[i]);
- return '<article class="card route"><h3>'+safe(title)+'</h3><p>'+safe(travel)+'</p><ol><li><strong>Старт.</strong> '+safe(origin)+'</li>'+stops.map(([name,query])=>'<li><a class="plain" target="_blank" rel="noopener noreferrer" href="'+map(query+' '+c.name)+'">'+safe(name)+'</a></li>').join('')+'<li>Возвращение к точке старта</li></ol>'+link(directions(origin,stops.map(p=>p[1]+' '+c.name),mode),'Маршрут и время в Google Maps')+'</article>';
+ return '<article class="card route"><h3>'+safe(title)+'</h3><p>'+safe(travel)+'</p><ol><li><strong>Старт.</strong> '+safe(origin)+'</li>'+stops.map(([name,query])=>'<li>'+cityMapLink(query,c,name,'plain')+'</li>').join('')+'<li>Возвращение к точке старта</li></ol>'+link(directions(origin,stops.map(p=>p[1]+' '+c.name),mode),'Маршрут и время в Google Maps')+'</article>';
 }
 function placeCard(id,i,place,saved){
  const [name,zh,desc]=place, key=id+':'+i;
- return '<article class="card"><h3>'+safe(name)+'</h3><p class="muted" lang="zh">'+safe(zh)+'</p><p>'+safe(desc)+'</p><div class="actions">'+link(map(zh+' '+cities[id].name),'На карте')+'<button data-save="'+key+'" aria-pressed="'+saved.includes(key)+'">'+(saved.includes(key)?'В избранном':'Сохранить')+'</button></div></article>';
+ return '<article class="card"><h3>'+safe(name)+'</h3><p class="muted" lang="zh">'+safe(zh)+'</p><p>'+safe(desc)+'</p><div class="actions">'+cityMapLink(zh,cities[id],'На карте')+'<button data-save="'+key+'" aria-pressed="'+saved.includes(key)+'">'+(saved.includes(key)?'В избранном':'Сохранить')+'</button></div></article>';
 }
 function city(id){
  const c=cities[id], saved=favorites(), category=state.category, preset=state.presets[id]||0;
  const defaultName=savedHotelStart(id) || c.baseName || hotels[c.hotel][0];
  let html=hero(c.name,c.dates,'city-cover city-hero',id)+'<section><h2>Маршруты от вашей точки старта</h2><div class="card route"><form id="route-options"><label>Точка старта<input name="start" placeholder="'+safe(defaultName)+'" value="'+safe(state.starts[id]||'')+'"></label><label>План<select name="preset">'+c.routes.map(([name],i)=>'<option value="'+i+'" '+(i===preset?'selected':'')+'>'+safe(name)+'</option>').join('')+'</select></label><label>Режим карты<select name="mode"><option value="walking">Пешком</option><option value="driving" '+(state.modes[id]==='driving'?'selected':'')+'>На машине</option></select></label><button class="primary">Показать</button>'+(c.hotel?'<a class="btn" href="#hotel/'+c.hotel+'">Карточка отеля</a>':'')+'</form><p class="muted">'+(savedHotelStart(id)?'Старт взят из данных отеля в маршруте.':id==='beijing'?'Для 25 января старт по умолчанию — PEK T3. Подтверждённый отель относится к 15 января.':c.hotel?'По умолчанию используется подтверждённый отель.':'Пока отель уточняется, старт — '+safe(defaultName)+'.')+' Порядок остановок предложен заранее. Карта рассчитывает время в пути. В парках проверьте часы работы и правила входа.</p></div>'+routeCard(id,c,c.routes[preset])+'</section><section><h2>Путеводитель</h2><div class="filters">'+Object.entries(categories).map(([key,label])=>'<button data-category="'+key+'" aria-pressed="'+(key===category)+'">'+label+'</button>').join('')+'</div><div class="grid">';
  if(category==='places') html+=c.places.map((p,i)=>placeCard(id,i,p,saved)).join('');
- if(category==='food') html+=c.food.map(([n,q,d])=>'<article class="card"><h3>'+safe(n)+'</h3><p lang="zh">'+safe(q)+'</p><p>'+safe(d)+'</p>'+link(map(q+' '+c.name),'Где попробовать')+'</article>').join('');
+ if(category==='food') html+=c.food.map(([n,q,d])=>'<article class="card"><h3>'+safe(n)+'</h3><p lang="zh">'+safe(q)+'</p><p>'+safe(d)+'</p>'+cityMapLink(q,c,'Где попробовать')+'</article>').join('');
  if(category==='routes'||category==='tours') html+=c[category].map(r=>routeCard(id,c,r)).join('');
  return html+'</div></section>';
 }
