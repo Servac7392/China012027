@@ -18,7 +18,7 @@ const missingDetails = {
 };
 const detailFields = {
  transfer: {label:'Переезд', fields:{route:'Откуда и куда', transport:'Вид транспорта', time:'Дата и местное время'}},
- ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта'}},
+ ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта', url:'Ссылка на отель'}},
  hotel: {label:'Отель', fields:{name:'Название отеля', address:'Адрес', stay:'Даты заезда и выезда', price:'Цена и валюта'}}
 };
 const detailKey = 'china-trip-details-v1';
@@ -28,15 +28,31 @@ function tripDetails(){
   return data && typeof data==='object' && !Array.isArray(data) ? data : {};
  } catch { return {}; }
 }
+
+function linkedText(value){
+ return String(value).split(/(https?:\/\/[^\s<>"']+)/g).map(part=>/^https?:\/\//i.test(part)?link(part,'Открыть ссылку'):safe(part)).join('');
+}
+function baseRecord(date,type){
+ const day=days.find(d=>d[0]===date);
+ if(!day)return {};
+ if(type==='hotel'&&day[5]){
+  const h=hotels[day[5]];
+  return {name:h[0],price:String(h[2]),stay:h[4]+'–'+h[5]+' января 2027',url:hotelAddresses[day[5]]?.url||''};
+ }
+ return {};
+}
+
 function detailCards(date){
- const types=missingDetails[date]||[], records=tripDetails();
+ const types=[...(missingDetails[date]||[])], records=tripDetails();
+ const day=days.find(d=>d[0]===date);
+ if(day?.[5]&&!types.includes('hotel'))types.push('hotel');
  if(!types.length)return '';
- return '<div class="detail-list">'+types.map(type=>detailCard(date+':'+type,type,records[date+':'+type]||{})).join('')+'</div>';
+ return '<div class="detail-list">'+types.map(type=>detailCard(date+':'+type,type,{...baseRecord(date,type),...records[date+':'+type]})).join('')+'</div>';
 }
 function detailCard(key,type,record){
   const {label,fields}=detailFields[type];
   const pairs=Object.entries(fields);
-  const summary=pairs.filter(([name])=>record[name]).map(([name,title])=>'<div><dt>'+safe(title)+'</dt><dd>'+safe(record[name])+'</dd></div>').join('');
+  const summary=pairs.filter(([name])=>record[name]).map(([name,title])=>'<div><dt>'+safe(title)+'</dt><dd>'+linkedText(record[name])+'</dd></div>').join('');
   return '<section class="detail-card" data-detail="'+key+'" aria-label="'+label+'"><h4>'+label+'</h4>'+
    (summary?'<dl>'+summary+'</dl>':'')+
    '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(summary?'Изменить':'Добавить данные')+'</summary>'+
@@ -81,13 +97,15 @@ function yuanConversion(cents,rubCents){
 }
 function expenseSummary(){
  const flights=31324+60306;
- const bookedHotels=Object.values(hotels).reduce((sum,hotel)=>sum+Math.round(hotel[2]*100),0);
+ const records=tripDetails();
+ const bookedHotels=days.reduce((sum,day)=>sum+(day[5]&&!parseTripPrice(records[day[0]+':hotel']?.price)?Math.round(hotels[day[5]][2]*100):0),0);
  const totals=new Map([['RUB',flights*100+bookedHotels]]);
  let uncounted=0;
  for(const [key,record] of Object.entries(tripDetails())){
-  if(!record?.price || key==='26:ticket' || key==='20:hotel')continue;
+  if(!record?.price)continue;
   const [date,type]=key.split(':');
-  if(!missingDetails[date]?.includes(type))continue;
+  if(!detailFields[type])continue;
+  if(key==='26:ticket')continue;
   const money=parseTripPrice(record.price);
   if(!money){uncounted++;continue;}
   totals.set(money.currency,(totals.get(money.currency)||0)+money.cents);
@@ -101,8 +119,18 @@ function hotelDates(id){
  const [, , , , checkIn,checkOut]=hotels[id];
  return '<p class="stay-dates"><strong>Заезд</strong> '+checkIn+' января 2027 · <strong>Выезд</strong> '+(checkOut?checkOut+' января 2027':'уточняется')+'</p>';
 }
+function dayInfo(date,text){
+ const records=tripDetails();
+ const present=type=>Object.values(records[date+':'+type]||{}).some(Boolean);
+ if(date==='20'&&present('ticket'))return '';
+ if(date==='26'&&present('ticket')&&/уточн/.test(text))return '';
+ if(date==='18–20'&&present('hotel'))return present('transfer')?'':'Переезд из Ханчжоу уточнить';
+ if(date==='23–24'&&present('hotel'))return 'Выезд из Manyuan Resort Hotel 23 января'+(present('transfer')?'':' · транспорт и время уточнить');
+ if(date==='25'&&present('hotel'))return text.replace(' · отель на 25 января уточнить','');
+ return text;
+}
 function trip(){
- return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере.</p><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(info)+'</p>'+(cost?'<p class="muted">'+safe(cost)+'</p>':'')+(hotel?'<p><a class="plain" href="#hotel/'+hotel+'">'+safe(hotels[hotel][0])+'</a> · '+rub(hotels[hotel][2])+'</p>'+hotelDates(hotel):'')+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>';
+ return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><button type="button" data-export>Скачать резервную копию</button><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>';
 }
 function hotel(id){
  const [name,cityName,price,room]=hotels[id];
@@ -157,6 +185,11 @@ function render(){
 app.addEventListener('click',async event=>{
  const button=event.target.closest('button');
  if(!button)return;
+ if(button.hasAttribute('data-export')){
+ const data={details:tripDetails(),favorites:favorites(),version:1};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+ const a=document.createElement('a');a.href=url;a.download='china-trip-backup.json';a.click();URL.revokeObjectURL(url);return;
+ }
  if(button.hasAttribute('data-copy-taxi')){
   const card=button.closest('.taxi-card'), address=card.querySelector('textarea'), status=card.querySelector('[data-taxi-status]');
   try{
@@ -184,15 +217,15 @@ app.addEventListener('submit',event=>{
  if(key){
   event.preventDefault();
   const [date,type]=key.split(':');
-  if(!missingDetails[date]?.includes(type))return;
+  if(!detailFields[type])return;
   const form=new FormData(event.target), card=event.target.closest('.detail-card'), status=card.querySelector('[data-status]');
-  const record=Object.fromEntries(Object.keys(detailFields[type].fields).map(name=>[name,String(form.get(name)||'').trim()]));
+  const record={...(tripDetails()[key]||{}),...Object.fromEntries(Object.keys(detailFields[type].fields).map(name=>[name,String(form.get(name)||'').trim()]))};
   const all=tripDetails();
   if(Object.values(record).some(Boolean))all[key]=record;
-  else delete all[key];
-  try{localStorage.setItem(detailKey,JSON.stringify(all));}
+  else {status.textContent='Пустая запись не изменяет сохранённые данные.';return;}
+  try{if(!localStorage.getItem('china-trip-details-backup-v1'))localStorage.setItem('china-trip-details-backup-v1',localStorage.getItem(detailKey)||'{}');localStorage.setItem(detailKey,JSON.stringify(all));}
   catch{status.textContent='Не удалось сохранить данные в этом браузере.';return;}
-  card.outerHTML=detailCard(key,type,record);
+  render();
   const savedCard=app.querySelector('[data-detail="'+key+'"]');
   savedCard.querySelector('[data-status]').textContent='Данные сохранены.';
   savedCard.querySelector('summary').focus();
