@@ -181,16 +181,21 @@ function fieldsFor(date,type){
 function detailCard(key,type,record){
   const {label,fields}=fieldsFor(key.split(':')[0],type);
   const pairs=Object.entries(fields);
-  const flightFields=label==='Перелёт'?pairs.filter(([name])=>name!=='url'&&name!=='time').map(([name])=>name):[];
-  const missingFlightData=flightFields.some(name=>!record[name]);
-  const summary=pairs.filter(([name])=>(record[name]||flightFields.includes(name))&&(type!=='hotel'||(name!=='url'&&name!=='addressZh'))).map(([name,title])=>{
+  const isCoreField=name=>name!=='url'&&name!=='addressZh'&&!(label==='Перелёт'&&name==='time');
+  const hasTaxiAddress=record.addressZh||/\p{Script=Han}/u.test(record.address||'');
+  const missingData=pairs.some(([name])=>isCoreField(name)&&!record[name])||(type==='hotel'&&!hasTaxiAddress);
+  const visibleFields=pairs.filter(([name])=>{
+   if(type==='hotel'&&(name==='url'||name==='addressZh'))return false;
+   return record[name]||isCoreField(name);
+  });
+  const summary=visibleFields.map(([name,title])=>{
    const amount=name==='price'&&parseTripPrice(record[name]);
    const value=amount?new Intl.NumberFormat('ru-RU',{style:'currency',currency:amount.currency}).format(amount.cents/100):record[name]||'Уточняется';
    return '<div><dt>'+safe(title)+'</dt><dd>'+linkedText(value)+'</dd></div>';
   }).join('');
   return '<section class="detail-card" data-detail="'+key+'" aria-label="'+label+'"><h4>'+label+'</h4>'+
    (summary?'<dl>'+summary+'</dl>':'')+
-   '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(missingFlightData?'Добавить недостающие данные':summary?'Изменить':'Добавить данные')+'</summary>'+
+   '<details class="saved-detail"><summary>'+(missingData?'Добавить недостающие данные':'Изменить')+'</summary>'+
    '<form data-trip-detail="'+key+'" data-revision="'+(sharedTrip.records[key]?.revision||'')+'"><div class="detail-fields">'+pairs.map(([name,title])=>
     '<label>'+safe(title)+(name==='addressZh'?'<textarea name="addressZh" lang="zh" rows="3">'+safe(record[name]||'')+'</textarea>':
      '<input name="'+name+'" maxlength="200"'+(name==='departureTime'||name==='arrivalTime'?' placeholder="ЧЧ:ММ"':'')+' value="'+safe(record[name]||'')+'">')+'</label>'
@@ -294,7 +299,7 @@ function savedHotel(id){
  const room=record.name===hotels[hotelId]?.[0]?hotels[hotelId]?.[3]:'';
  const taxi=chineseAddress?'<textarea aria-label="Адрес отеля для такси" lang="zh" rows="3" readonly>'+safe(chineseAddress)+'</textarea>'+
   '<div class="actions"><button type="button" class="primary" data-copy-taxi>Скопировать для такси</button></div><p role="status" class="muted" data-taxi-status></p>':
-  '<p class="muted">Китайский адрес можно добавить через «Изменить».</p>';
+  '<p class="muted">Уточняется. Его можно внести через «Добавить недостающие данные».</p>';
  return hero(record.name||'Отель',cityName)+'<article class="card">'+backToTrip+
   detailCard(key,'hotel',record)+(room?'<p>'+safe(room)+'</p>':'')+
   '<section class="taxi-card"><h2>Адрес для такси</h2>'+taxi+'</section>'+
