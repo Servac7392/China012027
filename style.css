@@ -97,3 +97,41 @@ textarea:focus-visible {outline: 3px solid var(--amber);outline-offset: 3px}
 
 .flight-cost{margin-top:12px;color:var(--muted)}
 .flight-cost strong{color:var(--cyan);font-variant-numeric:tabular-nums}
+
+.city-cover {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--card);
+}
+.city-cover::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(0deg, #08131ffc 0%, #08131fd9 28%, #08131f42 75%);
+}
+.city-photo {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.citylink.city-cover {
+  display: flex;
+  align-items: flex-end;
+  min-height: 178px;
+  padding: 16px;
+}
+.citylink.city-cover:focus-visible {outline-offset: 2px}
+.city-cover-text h3 {margin: 0 0 3px; font-size: 1.25rem}
+.city-cover-text p, .city-hero p {color: #e1edf8}
+.city-hero {min-height: clamp(224px, 36vw, 360px)}
+.photo-credit summary {cursor: pointer; width: fit-content}
+.photo-credit ul {margin: 6px 0; padding-inline-start: 18px}
+@media(max-width: 550px) {
+  .citylink.city-cover {min-height: 155px}
+}

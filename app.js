@@ -5,8 +5,22 @@ const rub = n => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}
 const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const map = query => 'https://www.amap.com/search?query=' + encodeURIComponent(query);
 const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
-const hero = (title,sub,style='') => '<div class="hero'+(style?' '+style:'')+'"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p>'+'</div>';
-const cityCards = () => '<div class="grid">'+Object.entries(cities).map(([id,c])=>'<a class="card citylink" href="#city/'+id+'"><p class="date">'+c.dates+'</p><h3>'+c.name+'</h3><span class="muted">Маршруты и 10 мест</span></a>').join('')+'</div>';
+const cityPhotos={
+ beijing:'beijing-cover.webp',
+ chongqing:'chongqing-night.webp',
+ hangzhou:'hangzhou-cover.webp',
+ shanghai:'shanghai-cover.webp',
+ zhangjiajie:'zhangjiajie-cover.webp'
+};
+function cityPhoto(id,lazy=false){
+ return '<img class="city-photo" src="'+cityPhotos[id]+'" alt=""'+(lazy?' loading="lazy"':'')+' decoding="async">';
+}
+const hero = (title,sub,style='',cityId='') => '<div class="hero'+(style?' '+style:'')+'">'+
+ (cityId?cityPhoto(cityId):'')+'<h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p></div>';
+const cityCards = () => '<div class="grid">'+Object.entries(cities).map(([id,c])=>
+ '<a class="card citylink city-cover" href="#city/'+id+'">'+cityPhoto(id,true)+
+ '<div class="city-cover-text"><h3>'+safe(c.name)+'</h3><p>'+safe(c.dates)+'</p></div></a>'
+).join('')+'</div>';
 function favorites(){
  try { const value=JSON.parse(localStorage.getItem('china-trip-favorites')||'[]'); return Array.isArray(value)?value:[]; }
  catch { return []; }
@@ -310,7 +324,7 @@ function placeCard(id,i,place,saved){
 function city(id){
  const c=cities[id], saved=favorites(), category=state.category, preset=state.presets[id]||0;
  const defaultName=savedHotelStart(id) || c.baseName || hotels[c.hotel][0];
- let html=hero(c.name,c.dates)+'<section><h2>Маршруты от вашей точки старта</h2><div class="card route"><form id="route-options"><label>Точка старта<input name="start" placeholder="'+safe(defaultName)+'" value="'+safe(state.starts[id]||'')+'"></label><label>План<select name="preset">'+c.routes.map(([name],i)=>'<option value="'+i+'" '+(i===preset?'selected':'')+'>'+safe(name)+'</option>').join('')+'</select></label><label>Режим карты<select name="mode"><option value="walking">Пешком</option><option value="driving" '+(state.modes[id]==='driving'?'selected':'')+'>На машине</option></select></label><button class="primary">Показать</button>'+(c.hotel?'<a class="btn" href="#hotel/'+c.hotel+'">Карточка отеля</a>':'')+'</form><p class="muted">'+(savedHotelStart(id)?'Старт взят из данных отеля в маршруте.':id==='beijing'?'Для 25 января старт по умолчанию — PEK T3. Подтверждённый отель относится к 15 января.':c.hotel?'По умолчанию используется подтверждённый отель.':'Пока отель уточняется, старт — '+safe(defaultName)+'.')+' Порядок остановок предложен заранее. Карта рассчитывает время в пути. В парках проверьте часы работы и правила входа.</p></div>'+routeCard(id,c,c.routes[preset])+'</section><section><h2>Путеводитель</h2><div class="filters">'+Object.entries(categories).map(([key,label])=>'<button data-category="'+key+'" aria-pressed="'+(key===category)+'">'+label+'</button>').join('')+'</div><div class="grid">';
+ let html=hero(c.name,c.dates,'city-cover city-hero',id)+'<section><h2>Маршруты от вашей точки старта</h2><div class="card route"><form id="route-options"><label>Точка старта<input name="start" placeholder="'+safe(defaultName)+'" value="'+safe(state.starts[id]||'')+'"></label><label>План<select name="preset">'+c.routes.map(([name],i)=>'<option value="'+i+'" '+(i===preset?'selected':'')+'>'+safe(name)+'</option>').join('')+'</select></label><label>Режим карты<select name="mode"><option value="walking">Пешком</option><option value="driving" '+(state.modes[id]==='driving'?'selected':'')+'>На машине</option></select></label><button class="primary">Показать</button>'+(c.hotel?'<a class="btn" href="#hotel/'+c.hotel+'">Карточка отеля</a>':'')+'</form><p class="muted">'+(savedHotelStart(id)?'Старт взят из данных отеля в маршруте.':id==='beijing'?'Для 25 января старт по умолчанию — PEK T3. Подтверждённый отель относится к 15 января.':c.hotel?'По умолчанию используется подтверждённый отель.':'Пока отель уточняется, старт — '+safe(defaultName)+'.')+' Порядок остановок предложен заранее. Карта рассчитывает время в пути. В парках проверьте часы работы и правила входа.</p></div>'+routeCard(id,c,c.routes[preset])+'</section><section><h2>Путеводитель</h2><div class="filters">'+Object.entries(categories).map(([key,label])=>'<button data-category="'+key+'" aria-pressed="'+(key===category)+'">'+label+'</button>').join('')+'</div><div class="grid">';
  if(category==='places') html+=c.places.map((p,i)=>placeCard(id,i,p,saved)).join('');
  if(category==='food') html+=c.food.map(([n,q,d])=>'<article class="card"><h3>'+safe(n)+'</h3><p lang="zh">'+safe(q)+'</p><p>'+safe(d)+'</p>'+link(map(q+' '+c.name),'Где попробовать')+'</article>').join('');
  if(category==='routes'||category==='tours') html+=c[category].map(r=>routeCard(id,c,r)).join('');
