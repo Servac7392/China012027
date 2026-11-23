@@ -233,9 +233,10 @@ function trip(){
    detailCards(date)+'</div></article>';
  }).join('');
  return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+
-  '<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p>'+
+  '<section><h2>Дни поездки</h2>'+
   '<div class="days">'+itinerary+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>'+
-  '<div class="backup-download"><button type="button" data-export>Скачать резервную копию</button></div>';
+  '<div class="backup-download"><small>Добавленные данные сохраняются в этом браузере. Цена без валюты считается в рублях. Для юаней указывайте CNY или пишите «юаней».</small>'+
+  '<button type="button" data-export>Скачать резервную копию</button></div>';
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
 function savedHotel(id){

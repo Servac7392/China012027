@@ -90,7 +90,8 @@ textarea:focus-visible {outline: 3px solid var(--amber);outline-offset: 3px}
   header nav a {padding: 5px 0}
 }
 
-.backup-download{display:flex;justify-content:flex-end;margin-top:8px}
+.backup-download{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px 12px;margin-top:8px;color:var(--muted)}
+.backup-download small{flex:1 1 300px;font-size:.78rem;line-height:1.45}
 .backup-download button{min-height:44px;background:transparent;border-color:transparent;color:var(--muted);font-size:.78rem;text-decoration:underline;text-underline-offset:3px}
 .backup-download button:hover{color:var(--cyan)}
 
