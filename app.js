@@ -43,13 +43,35 @@ const flightBookings=[
 ];
 const detailKey = 'china-trip-details-v1';
 const detailBackupKey = 'china-trip-details-backup-v1';
+const tripDataUrl = 'https://jlxquozlyjxkkhwvqxiz.supabase.co/functions/v1/trip-data';
+const sharedTrip = {records:{}};
+async function tripData(payload){
+ const options={cache:'no-store',signal:AbortSignal.timeout(10000)};
+ if(payload)Object.assign(options,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ const result=await fetch(tripDataUrl,options);
+ const data=await result.json();
+ if(!result.ok)throw new Error(data.error||'storage');
+ for(const row of data.records)sharedTrip.records[row.key]=row;
+}
+function tripSaveMessage(error){
+ const messages={
+  password:'Пароль неверный.',
+  conflict:'Запись уже изменилась на сайте. Обнови страницу перед сохранением.',
+  setup:'Пароль для сохранения на сайте ещё не настроен.',
+  invalid:'Запись содержит неподдерживаемые данные.'
+ };
+ return messages[error.message]||'Не удалось сохранить на сайте. Проверь подключение и попробуй снова.';
+}
+function passwordField(){
+ return '<label>Пароль для сохранения<input type="password" name="editPassword" autocomplete="current-password" required></label>';
+}
 function readTripDetails(key){
  try {
   const data=JSON.parse(localStorage.getItem(key)||'{}');
   return data && typeof data==='object' && !Array.isArray(data) ? data : {};
  } catch { return {}; }
 }
-function tripDetails(){
+function localTripDetails(){
  const records=readTripDetails(detailKey);
  const backup=readTripDetails(detailBackupKey);
  for(const key of ['20:transfer','20:ticket']){
@@ -74,6 +96,10 @@ function tripDetails(){
   shanghaiEntries.push(key);
  }
  return Object.fromEntries(Object.entries(records).filter(([key])=>!shanghaiEntries.includes(key)));
+}
+
+function tripDetails(){
+ return {...localTripDetails(),...Object.fromEntries(Object.entries(sharedTrip.records).map(([key,row])=>[key,row.value]))};
 }
 
 function linkedText(value){
@@ -162,10 +188,10 @@ function detailCard(key,type,record){
   return '<section class="detail-card" data-detail="'+key+'" aria-label="'+label+'"><h4>'+label+'</h4>'+
    (summary?'<dl>'+summary+'</dl>':'')+
    '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(summary?'Изменить':'Добавить данные')+'</summary>'+
-   '<form data-trip-detail="'+key+'"><div class="detail-fields">'+pairs.map(([name,title])=>
+   '<form data-trip-detail="'+key+'" data-revision="'+(sharedTrip.records[key]?.revision||'')+'"><div class="detail-fields">'+pairs.map(([name,title])=>
     '<label>'+safe(title)+(name==='addressZh'?'<textarea name="addressZh" lang="zh" rows="3">'+safe(record[name]||'')+'</textarea>':
      '<input name="'+name+'" maxlength="200" value="'+safe(record[name]||'')+'">')+'</label>'
-   ).join('')+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p></section>';
+   ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p></section>';
 }
 function parseTripPrice(value){
  if(typeof value!=='string')return null;
@@ -250,8 +276,8 @@ function trip(){
  return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+
   '<section><h2>Дни поездки</h2>'+
   '<div class="days">'+itinerary+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>'+
-  '<div class="backup-download"><small>Добавленные данные сохраняются в этом браузере. Цена без валюты считается в рублях. Для юаней указывайте CNY или пишите «юаней».</small>'+
-  '<button type="button" data-export>Скачать резервную копию</button></div>';
+  '<div class="backup-download"><small>Сохранённые на сайте записи видны по обычной ссылке. Цена без валюты считается в рублях. Для юаней указывайте CNY или пишите «юаней».</small>'+
+  '<button type="button" data-export>Скачать резервную копию</button></div>'+localImportForm();
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
 function savedHotel(id){
@@ -385,23 +411,43 @@ app.addEventListener('click',async event=>{
   button.setAttribute('aria-pressed',String(active));button.textContent=active?'В избранном':'Сохранить';
  }
 });
-app.addEventListener('submit',event=>{
- const key=event.target.dataset.tripDetail;
- if(key){
+function localImportForm(){
+ const pending=Object.keys(localTripDetails()).some(key=>!Object.hasOwn(sharedTrip.records,key));
+ if(!pending)return '';
+ return '<details class="detail-card local-import"><summary>Перенести записи из этого браузера на сайт</summary>'+
+  '<form data-publish-local><p>Записи, которые уже есть на сайте, сохранятся.</p><div class="detail-fields">'+passwordField()+'</div>'+
+  '<div class="actions"><button type="submit" class="primary">Перенести записи</button></div><p role="status" data-status></p></form></details>';
+}
+app.addEventListener('submit',async event=>{
+ const element=event.target;
+ const key=element.dataset.tripDetail;
+ if(key||element.hasAttribute('data-publish-local')){
   event.preventDefault();
-  const [date,type]=key.split(':');
-  if(!detailFields[type])return;
-  const form=new FormData(event.target), card=event.target.closest('.detail-card'), status=card.querySelector('[data-status]');
-  const record={...(tripDetails()[key]||{}),...Object.fromEntries(Object.keys(fieldsFor(date,type).fields).map(name=>[name,String(form.get(name)||'').trim()]))};
-  const all=readTripDetails(detailKey);
-  if(Object.values(record).some(Boolean))all[key]=record;
-  else {status.textContent='Пустая запись не изменяет сохранённые данные.';return;}
-  try{if(!localStorage.getItem(detailBackupKey))localStorage.setItem(detailBackupKey,localStorage.getItem(detailKey)||'{}');localStorage.setItem(detailKey,JSON.stringify(all));}
-  catch{status.textContent='Не удалось сохранить данные в этом браузере.';return;}
-  render();
-  const savedCard=app.querySelector('[data-detail="'+key+'"]');
-  savedCard.querySelector('[data-status]').textContent='Данные сохранены.';
-  savedCard.querySelector('summary').focus();
+  const form=new FormData(element);
+  const status=(key?element.closest('.detail-card'):element).querySelector('[data-status]');
+  const button=element.querySelector('button[type="submit"]');
+  const password=String(form.get('editPassword')||'');
+  let payload;
+  if(key){
+   const [date,type]=key.split(':');
+   if(!Object.hasOwn(detailFields,type))return;
+   const value={...(tripDetails()[key]||{}),...Object.fromEntries(Object.keys(fieldsFor(date,type).fields).map(name=>[name,String(form.get(name)||'').trim()]))};
+   if(!Object.values(value).some(Boolean)){status.textContent='Заполни хотя бы одно поле.';return;}
+   payload={key,value,password,revision:element.dataset.revision||null};
+  }else{
+   payload={operation:'import',records:localTripDetails(),password};
+  }
+  element.querySelector('[name=editPassword]').value='';
+  button.disabled=true;
+  status.textContent='Сохраняю на сайте…';
+  try{
+   await tripData(payload);
+   render();
+   const savedStatus=key?app.querySelector('[data-detail="'+key+'"] [data-status]'):document.getElementById('trip-sync-status');
+   if(savedStatus)savedStatus.textContent=key?'Сохранено на сайте.':'Записи перенесены на сайт.';
+  }catch(error){
+   status.textContent=tripSaveMessage(error);
+  }finally{button.disabled=false;}
   return;
  }
  if(event.target.id!=='route-options')return;
@@ -417,3 +463,8 @@ window.setInterval(updateTripClock,30000);
 window.addEventListener('hashchange',()=>{state.category='places';render();window.scrollTo(0,0);});
 updateTripClock();
 render();
+tripData().then(()=>{
+ if(!app.querySelector('details[open]'))render();
+}).catch(()=>{
+ document.getElementById('trip-sync-status').textContent='Сайт с общими записями пока недоступен.';
+});
