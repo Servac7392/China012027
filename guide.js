@@ -15,6 +15,13 @@ const days = [
  ['25','Чунцин → Пекин','Air China CA4137 · 09:05 CKG → 11:35 PEK','60 306 ₽ за два перелёта 25–26 января · отель на 25 января уточнить','beijing'],
  ['26','Пекин → Владивосток','Вылет 10:55 PEK · номер рейса и прилёт уточнить','Билет входит в заказ 25–26 января']
 ];
+const flights = {
+ '15':{service:'CA810',airline:'Air China',departureTime:'16:45',arrivalTime:'17:25',departureAirport:'Владивосток (VVO)',arrivalAirport:'Пекин, Столичный (PEK)'},
+ '16':{service:'CA1825',airline:'Air China',departureTime:'06:35',arrivalTime:'08:15',departureAirport:'Пекин, Столичный (PEK)',arrivalAirport:'Чанчжоу (CZX)'},
+ '20':{},
+ '25':{service:'CA4137',airline:'Air China',departureTime:'09:05',arrivalTime:'11:35',departureAirport:'Чунцин (CKG)',arrivalAirport:'Пекин, Столичный (PEK)'},
+ '26':{departureTime:'10:55',departureAirport:'Пекин, Столичный (PEK)',arrivalAirport:'Владивосток (VVO)'}
+};
 // Колонки мест: название, подпись для карты, краткое описание.
 const cities = {
 hangzhou:{name:'Ханчжоу',dates:'17–18 января',hotel:'hzh',base:'湖滨步行街 杭州',places:[
