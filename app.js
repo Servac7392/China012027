@@ -8,6 +8,7 @@ const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" re
 const cityPhotos={
  beijing:'beijing-cover.webp',
  chongqing:'chongqing-night.webp',
+ changzhou:'changzhou-cover.webp',
  hangzhou:'hangzhou-cover.webp',
  shanghai:'shanghai-cover.webp',
  zhangjiajie:'zhangjiajie-cover.webp'
@@ -91,7 +92,7 @@ function hotelBookingLink(key,record){
  const name=String(record.name).replace(/https?:\/\/[^\s<>"']+/gi,'').trim()||'Открыть отель';
  if(url)return link(url,'Открыть на Trip.com');
  const date=key.split(':')[0];
- const city=days.find(day=>day[0]===date)?.[4]||(date==='16'?'changzhou':'');
+ const city=days.find(day=>day[0]===date)?.[4];
  const tripCities={beijing:[1,'Beijing'],shanghai:[2,'Shanghai'],chongqing:[4,'Chongqing'],
   hangzhou:[17,'Hangzhou'],zhangjiajie:[27,'Zhangjiajie'],changzhou:[213,'Changzhou']};
  const [cityId,cityName]=tripCities[city]||[];
@@ -304,7 +305,7 @@ function directions(origin,stops,mode){
  return 'https://www.google.com/maps/dir/?'+params;
 }
 function savedHotelStart(id){
- const date={shanghai:'18–20',chongqing:'23–24',beijing:'25',zhangjiajie:'20'}[id];
+ const date={changzhou:'16',shanghai:'18–20',chongqing:'23–24',beijing:'25',zhangjiajie:'20'}[id];
  if(!date)return '';
  const hotel=tripDetails()[date+':hotel'];
  return hotel ? (hotel.address||hotel.name||'') : '';
@@ -345,7 +346,7 @@ function render(){
   const content=page==='stay'?savedHotel(id):flight(id);
   if(content){app.innerHTML=content;return;}
  }
- if(page==='cities'){app.innerHTML=hero('Города','Пять путеводителей по маршруту')+cityCards();return;}
+ if(page==='cities'){app.innerHTML=hero('Города','Путеводители по маршруту')+cityCards();return;}
  if(page==='expenses'){app.innerHTML=hero('Расходы','Китай · 15–26 января 2027')+expenseSummary();return;}
  if(page==='saved'){
   const cards=favorites().map(key=>{const [id,i]=key.split(':');return Object.hasOwn(cities,id)&&cities[id].places[i]?placeCard(id,Number(i),cities[id].places[i],favorites()):''}).join('');
