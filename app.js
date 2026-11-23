@@ -5,7 +5,7 @@ const rub = n => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}
 const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const map = query => 'https://www.amap.com/search?query=' + encodeURIComponent(query);
 const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
-const hero = (title,sub,extra='') => '<div class="hero"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p>'+extra+'</div>';
+const hero = (title,sub,extra='',style='') => '<div class="hero'+(style?' '+style:'')+'"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p>'+extra+'</div>';
 const cityCards = () => '<div class="grid">'+Object.entries(cities).map(([id,c])=>'<a class="card citylink" href="#city/'+id+'"><p class="date">'+c.dates+'</p><h3>'+c.name+'</h3><span class="muted">Маршруты и 10 мест</span></a>').join('')+'</div>';
 function favorites(){
  try { const value=JSON.parse(localStorage.getItem('china-trip-favorites')||'[]'); return Array.isArray(value)?value:[]; }
@@ -216,7 +216,7 @@ function dayInfo(date,text){
  return text;
 }
 function trip(){
- return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','<p id="trip-countdown" class="countdown" hidden></p>')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><button type="button" data-export>Скачать резервную копию</button><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>';
+ return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','<p id="trip-countdown" class="countdown" hidden></p>','trip-hero')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><button type="button" data-export>Скачать резервную копию</button><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>';
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
 function savedHotel(id){
@@ -295,6 +295,11 @@ function city(id){
 }
 function render(){
  const [page,id]=location.hash.slice(1).split('/');
+ const activePage=page==='city'?'cities':['cities','saved','expenses'].includes(page)?page:'trip';
+ for(const tab of document.querySelectorAll('header nav a')){
+  if(tab.hash==='#'+activePage)tab.setAttribute('aria-current','page');
+  else tab.removeAttribute('aria-current');
+ }
  if(page==='city'&&Object.hasOwn(cities,id)){app.innerHTML=city(id);return;}
  if(page==='hotel'&&Object.hasOwn(hotels,id)){
   app.innerHTML=savedHotel(encodeURIComponent(days.find(day=>day[5]===id)[0]));return;
