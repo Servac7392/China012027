@@ -18,15 +18,24 @@ const missingDetails = {
 };
 const detailFields = {
  transfer: {label:'Переезд', fields:{route:'Откуда и куда', transport:'Вид транспорта', time:'Дата и местное время'}},
- ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта', url:'Ссылка на отель'}},
+ ticket: {label:'Билет', fields:{service:'Номер рейса или поезда', time:'Время и место отправления / прибытия', price:'Цена и валюта', url:'Ссылка на билет'}},
  hotel: {label:'Отель', fields:{name:'Название отеля', address:'Адрес', stay:'Даты заезда и выезда', price:'Цена и валюта', url:'Ссылка на отель'}}
 };
 const detailKey = 'china-trip-details-v1';
-function tripDetails(){
+const detailBackupKey = 'china-trip-details-backup-v1';
+function readTripDetails(key){
  try {
-  const data=JSON.parse(localStorage.getItem(detailKey)||'{}');
+  const data=JSON.parse(localStorage.getItem(key)||'{}');
   return data && typeof data==='object' && !Array.isArray(data) ? data : {};
  } catch { return {}; }
+}
+function tripDetails(){
+ const records=readTripDetails(detailKey);
+ const backup=readTripDetails(detailBackupKey);
+ for(const key of ['20:transfer','20:ticket']){
+  if(!Object.hasOwn(records,key)&&backup[key]&&Object.values(backup[key]).some(Boolean))records[key]=backup[key];
+ }
+ return records;
 }
 
 function linkedText(value){
@@ -35,6 +44,7 @@ function linkedText(value){
 function baseRecord(date,type){
  const day=days.find(d=>d[0]===date);
  if(!day)return {};
+ if(date==='20'&&type==='transfer')return {route:day[1],transport:'Перелёт'};
  if(type==='hotel'&&day[5]){
   const h=hotels[day[5]];
   return {name:h[0],price:String(h[2]),stay:h[4]+'–'+h[5]+' января 2027',url:hotelAddresses[day[5]]?.url||''};
@@ -122,7 +132,7 @@ function hotelDates(id){
 function dayInfo(date,text){
  const records=tripDetails();
  const present=type=>Object.values(records[date+':'+type]||{}).some(Boolean);
- if(date==='20'&&present('ticket'))return '';
+ if(date==='20'&&present('ticket'))return 'Перелёт по плану';
  if(date==='26'&&present('ticket')&&/уточн/.test(text))return '';
  if(date==='18–20'&&present('hotel'))return present('transfer')?'':'Переезд из Ханчжоу уточнить';
  if(date==='23–24'&&present('hotel'))return 'Выезд из Manyuan Resort Hotel 23 января'+(present('transfer')?'':' · транспорт и время уточнить');
@@ -220,10 +230,10 @@ app.addEventListener('submit',event=>{
   if(!detailFields[type])return;
   const form=new FormData(event.target), card=event.target.closest('.detail-card'), status=card.querySelector('[data-status]');
   const record={...(tripDetails()[key]||{}),...Object.fromEntries(Object.keys(detailFields[type].fields).map(name=>[name,String(form.get(name)||'').trim()]))};
-  const all=tripDetails();
+  const all=readTripDetails(detailKey);
   if(Object.values(record).some(Boolean))all[key]=record;
   else {status.textContent='Пустая запись не изменяет сохранённые данные.';return;}
-  try{if(!localStorage.getItem('china-trip-details-backup-v1'))localStorage.setItem('china-trip-details-backup-v1',localStorage.getItem(detailKey)||'{}');localStorage.setItem(detailKey,JSON.stringify(all));}
+  try{if(!localStorage.getItem(detailBackupKey))localStorage.setItem(detailBackupKey,localStorage.getItem(detailKey)||'{}');localStorage.setItem(detailKey,JSON.stringify(all));}
   catch{status.textContent='Не удалось сохранить данные в этом браузере.';return;}
   render();
   const savedCard=app.querySelector('[data-detail="'+key+'"]');
