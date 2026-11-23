@@ -4,7 +4,7 @@ const categories = {places:'Достопримечательности',food:'Е
 const rub = n => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(n);
 const safe = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const map = query => 'https://www.amap.com/search?query=' + encodeURIComponent(query);
-const link = (url,label) => '<a class="btn" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
+const link = (url,label,style='btn') => '<a class="'+style+'" target="_blank" rel="noopener noreferrer" href="'+safe(url)+'">'+safe(label)+'</a>';
 const hero = (title,sub) => '<div class="hero"><h1>'+safe(title)+'</h1><p>'+safe(sub)+'</p></div>';
 const cityCards = () => '<div class="grid">'+Object.entries(cities).map(([id,c])=>'<a class="card citylink" href="#city/'+id+'"><p class="date">'+c.dates+'</p><h3>'+c.name+'</h3><span class="muted">Маршруты и 10 мест</span></a>').join('')+'</div>';
 function favorites(){
@@ -59,6 +59,18 @@ function tripDetails(){
 function linkedText(value){
  return String(value).split(/(https?:\/\/[^\s<>"']+)/g).map(part=>/^https?:\/\//i.test(part)?link(part,'Открыть ссылку'):safe(part)).join('');
 }
+function hotelNameLink(key,record){
+ const url=[record.url,record.name,record.address,record.stay]
+  .flatMap(value=>String(value||'').match(/https?:\/\/[^\s<>"']+/gi)||[])
+  .find(value=>{
+   try{return Boolean(new URL(value).hostname);}
+   catch{return false;}
+  });
+ const name=String(record.name).replace(/https?:\/\/[^\s<>"']+/gi,'').trim()||'Открыть отель';
+ if(url)return link(url,name,'plain accent');
+ const date=key.split(':')[0];
+ return '<a class="plain accent" href="#stay/'+encodeURIComponent(date)+'">'+safe(name)+'</a>';
+}
 function baseRecord(date,type){
  const day=days.find(d=>d[0]===date);
  if(!day)return {};
@@ -68,6 +80,12 @@ function baseRecord(date,type){
   return {name:h[0],price:String(h[2]),stay:h[4]+'–'+h[5]+' января 2027',url:hotelAddresses[day[5]]?.url||''};
  }
  return {};
+}
+function detailRecord(date,type,saved){
+ const defaults=baseRecord(date,type);
+ const record={...defaults,...saved};
+ if(type==='hotel'&&saved?.name&&saved.name!==defaults.name)record.url=saved.url||'';
+ return record;
 }
 
 function detailCards(date){
@@ -79,12 +97,18 @@ function detailCards(date){
  }
  if(day?.[5]&&!types.includes('hotel'))types.push('hotel');
  if(!types.length)return '';
- return '<div class="detail-list">'+types.map(type=>detailCard(date+':'+type,type,{...baseRecord(date,type),...records[date+':'+type]})).join('')+'</div>';
+ return '<div class="detail-list">'+types.map(type=>{
+  const key=date+':'+type;
+  return detailCard(key,type,detailRecord(date,type,records[key]));
+ }).join('')+'</div>';
 }
-function detailCard(key,type,record){
+function detailCard(key,type,record,linkHotelName=true){
   const {label,fields}=detailFields[type];
   const pairs=Object.entries(fields);
-  const summary=pairs.filter(([name])=>record[name]).map(([name,title])=>'<div><dt>'+safe(title)+'</dt><dd>'+linkedText(record[name])+'</dd></div>').join('');
+  const summary=pairs.filter(([name])=>record[name]).map(([name,title])=>{
+   const value=type==='hotel'&&name==='name'&&linkHotelName?hotelNameLink(key,record):linkedText(record[name]);
+   return '<div><dt>'+safe(title)+'</dt><dd>'+value+'</dd></div>';
+  }).join('');
   return '<section class="detail-card" data-detail="'+key+'" aria-label="'+label+'"><h4>'+label+'</h4>'+
    (summary?'<dl>'+summary+'</dl>':'')+
    '<details'+(summary?' class="saved-detail"':'')+'><summary>'+(summary?'Изменить':'Добавить данные')+'</summary>'+
@@ -171,6 +195,15 @@ function hotel(id){
  const taxiText=taxi.local ? taxi.local : name+'\n'+taxi.address;
  return hero(name,cityName)+'<article class="card">'+hotelDates(id)+'<section class="taxi-card"><h2>Адрес для такси</h2><textarea aria-label="Адрес отеля для такси" '+(taxi.local?'lang="zh" ':'')+'rows="3" readonly>'+safe(taxiText)+'</textarea>'+(taxi.local?'<p class="muted">'+safe(taxi.address)+'</p>':'')+'<div class="actions"><button type="button" class="primary" data-copy-taxi>Скопировать адрес</button>'+link(map(taxi.local?.split('\n').at(-1)||name),'На карте')+'</div><p role="status" class="muted" data-taxi-status></p></section><span class="tag">Подтверждено</span><h2>'+rub(price)+'</h2>'+(room?'<p>'+safe(room)+'</p>':'')+'<div class="actions">'+link(taxi.url,'Страница отеля на Trip.com')+(associated?'<a class="btn primary" href="#city/'+associated[0]+'">Маршруты по городу</a>':'')+'</div></article>';
 }
+function savedHotel(id){
+ const day=days.find(([date])=>encodeURIComponent(date)===id);
+ if(!day)return '';
+ const [date,title,,,city]=day;
+ const key=date+':hotel', record=detailRecord(date,'hotel',tripDetails()[key]);
+ if(!record?.name)return '';
+ return hero(record.name,cities[city]?.name||title)+'<p><a class="plain accent" href="#trip">К маршруту</a></p>'+
+  detailCard(key,'hotel',record,false);
+}
 function directions(origin,stops,mode){
  const params=new URLSearchParams({api:'1',origin,destination:origin,waypoints:stops.join('|'),travelmode:mode});
  return 'https://www.google.com/maps/dir/?'+params;
@@ -206,6 +239,10 @@ function render(){
  const [page,id]=location.hash.slice(1).split('/');
  if(page==='city'&&Object.hasOwn(cities,id)){app.innerHTML=city(id);return;}
  if(page==='hotel'&&Object.hasOwn(hotels,id)){app.innerHTML=hotel(id);return;}
+ if(page==='stay'){
+  const content=savedHotel(id);
+  if(content){app.innerHTML=content;return;}
+ }
  if(page==='cities'){app.innerHTML=hero('Города','Пять путеводителей по маршруту')+cityCards();return;}
  if(page==='expenses'){app.innerHTML=hero('Расходы','Китай · 15–26 января 2027')+expenseSummary();return;}
  if(page==='saved'){
