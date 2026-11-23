@@ -52,6 +52,7 @@ async function tripData(payload){
  const data=await result.json();
  if(!result.ok)throw new Error(data.error||'storage');
  for(const row of data.records)sharedTrip.records[row.key]=row;
+ updateTripClock();
 }
 function tripSaveMessage(error){
  const messages={
@@ -314,7 +315,73 @@ function flight(id){
 }
 const dateInRussian=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'});
 const dayPlural=new Intl.PluralRules('ru');
-const dayWords={one:'день',few:'дня',many:'дней',other:'дня'};
+const timeWords={
+ day:{one:'день',few:'дня',many:'дней',other:'дня'},
+ hour:{one:'час',few:'часа',many:'часов',other:'часа'},
+ minute:{one:'минута',few:'минуты',many:'минут',other:'минуты'}
+};
+const travelDates=['15','16','17','18–20','20','23–24','25','26'];
+const dateFormatters=Object.fromEntries(['Asia/Vladivostok','Asia/Shanghai'].map(timeZone=>[timeZone,
+ new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'numeric',day:'numeric',timeZoneName:'longOffset'})
+]));
+const minuteMs=60000, hourMs=60*minuteMs, dayMs=24*hourMs;
+function travelDateParts(date,zone){
+ return Object.fromEntries(dateFormatters[zone].formatToParts(date).map(({type,value})=>[type,value]));
+}
+function departureTime(text){
+ const source=String(text||'');
+ const times=Array.from(source.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g));
+ const time=times.find(match=>{
+  const context=source.slice(Math.max(0,match.index-34),match.index);
+  const label=Array.from(context.matchAll(/вылет\w*|отправлени[ея]|прил[её]т\w*|прибытие|прибытия/gi)).at(-1)?.[0];
+  return !label||!/^прил|^приб/i.test(label);
+ });
+ return time?Number(time[1])*60+Number(time[2]):null;
+}
+function travelEvents(records){
+ return travelDates.map(date=>{
+  const zone=date==='15'?'Asia/Vladivostok':'Asia/Shanghai';
+  const isFlight=Object.hasOwn(flights,date);
+  const ticket=records[date+':ticket']||{}, transfer=records[date+':transfer']||{};
+  const sources=isFlight?[ticket.departureTime,ticket.time,transfer.time,flights[date].departureTime]:[transfer.time,ticket.time];
+  const daysInRange=date.split('–').map(Number);
+  const statedDay=sources.map(value=>String(value||'').match(/\b(\d{1,2})(?:\s+января|[./]01(?!\d))/i))
+   .find(match=>match&&Number(match[1])>=daysInRange[0]&&Number(match[1])<=(daysInRange[1]||daysInRange[0]));
+  const day=statedDay?Number(statedDay[1]):daysInRange[0];
+  const localDay=Date.UTC(2027,0,day);
+  const minutes=sources.map(departureTime).find(value=>value!==null);
+  const offset=travelDateParts(new Date(localDay),zone).timeZoneName.match(/([+-])(\d{2}):(\d{2})/);
+  const offsetMinutes=offset?(offset[1]==='-'?-1:1)*(Number(offset[2])*60+Number(offset[3])):0;
+  const start=minutes===undefined?null:localDay+(minutes-offsetMinutes)*minuteMs;
+  return {zone,localDay,start,isFlight};
+ });
+}
+function travelCountdown(now,records){
+ const events=travelEvents(records);
+ const localDayFor=zone=>{
+  const parts=travelDateParts(now,zone);
+  return Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day));
+ };
+ const text=(label,value,unit)=>label+' '+value+' '+timeWords[unit][dayPlural.select(value)];
+ const first=events[0];
+ const beforeTrip=(first.localDay-localDayFor(first.zone))/dayMs;
+ if(beforeTrip>0)return text('До поездки',beforeTrip,'day');
+ for(const event of events){
+  const daysLeft=(event.localDay-localDayFor(event.zone))/dayMs;
+  const label=event.isFlight?'До вылета':'До переезда';
+  if(event.start===null){
+   if(daysLeft>0)return text(label,daysLeft,'day');
+   if(daysLeft===0)return event.isFlight?'Сегодня вылет':'Сегодня переезд';
+   continue;
+  }
+  const remaining=event.start-now.getTime();
+  if(remaining<=0)continue;
+  if(remaining>=dayMs)return text(label,Math.ceil(remaining/dayMs),'day');
+  if(remaining>=hourMs)return text(label,Math.ceil(remaining/hourMs),'hour');
+  return text(label,Math.ceil(remaining/minuteMs),'minute');
+ }
+ return '';
+}
 function updateTripClock(now=new Date()){
  const year=now.getFullYear(), month=now.getMonth(), day=now.getDate();
  const dateLabel=document.getElementById('today');
@@ -322,9 +389,8 @@ function updateTripClock(now=new Date()){
  dateLabel.textContent=dateInRussian.format(now);
  const countdown=document.getElementById('trip-countdown');
  if(!countdown)return;
- const daysLeft=(Date.UTC(2027,0,15)-Date.UTC(year,month,day))/86400000;
- countdown.hidden=daysLeft<0;
- countdown.textContent=daysLeft>0?'До поездки '+daysLeft+' '+dayWords[dayPlural.select(daysLeft)]:daysLeft===0?'Сегодня вылет':'';
+ countdown.textContent=travelCountdown(now,tripDetails());
+ countdown.hidden=!countdown.textContent;
 }
 function directions(origin,stops,mode){
  const params=new URLSearchParams({api:'1',origin,destination:origin,waypoints:stops.join('|'),travelmode:mode});
