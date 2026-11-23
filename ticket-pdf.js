@@ -1,10 +1,10 @@
 const ticketFileUrls=new Map();
 
-function ticketFilesCard(key){
+function ticketFilesCard(key,webLink){
  return '<div class="ticket-files" data-ticket-files="'+safe(key)+'">'+
-  '<p class="muted">PDF хранится в этом браузере.</p>'+
-  '<div class="actions"><button type="button" data-select-ticket-pdf>Прикрепить PDF</button>'+
+  '<div class="actions">'+(webLink?linkedText(webLink):'')+'<button type="button" data-select-ticket-pdf>Прикрепить PDF</button>'+
   '<input type="file" accept=".pdf,application/pdf" multiple hidden aria-label="Выбрать билеты PDF" data-ticket-pdf></div>'+
+  '<p class="muted">PDF хранится в этом браузере.</p>'+
   '<ul class="ticket-file-list" data-ticket-file-list hidden></ul>'+
   '<p class="muted" role="status" data-ticket-file-status></p></div>';
 }

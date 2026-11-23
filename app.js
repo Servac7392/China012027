@@ -186,9 +186,11 @@ function detailCard(key,type,record){
   const missingData=pairs.some(([name])=>isCoreField(name)&&!record[name])||(type==='hotel'&&!hasTaxiAddress);
   const visibleFields=pairs.filter(([name])=>{
    if(type==='hotel'&&(name==='url'||name==='addressZh'))return false;
+   if(type==='ticket'&&name==='url')return true;
    return record[name]||isCoreField(name);
   });
   const summary=visibleFields.map(([name,title])=>{
+   if(type==='ticket'&&name==='url')return '<div class="ticket-link-field"><dt>'+safe(title)+'</dt><dd>'+ticketFilesCard(key,record.url)+'</dd></div>';
    const amount=name==='price'&&parseTripPrice(record[name]);
    const value=amount?new Intl.NumberFormat('ru-RU',{style:'currency',currency:amount.currency}).format(amount.cents/100):record[name]||'Уточняется';
    return '<div><dt>'+safe(title)+'</dt><dd>'+linkedText(value)+'</dd></div>';
@@ -199,8 +201,7 @@ function detailCard(key,type,record){
    '<form data-trip-detail="'+key+'" data-revision="'+(sharedTrip.records[key]?.revision||'')+'"><div class="detail-fields">'+pairs.map(([name,title])=>
     '<label>'+safe(title)+(name==='addressZh'?'<textarea name="addressZh" lang="zh" rows="3">'+safe(record[name]||'')+'</textarea>':
      '<input name="'+name+'" maxlength="200"'+(name==='departureTime'||name==='arrivalTime'?' placeholder="ЧЧ:ММ"':'')+' value="'+safe(record[name]||'')+'">')+'</label>'
-   ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p>'+
-   (type==='ticket'?ticketFilesCard(key):'')+'</section>';
+   ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p></section>';
 }
 function parseTripPrice(value){
  if(typeof value!=='string')return null;
