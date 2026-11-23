@@ -116,7 +116,7 @@ function detailCards(date){
   const record=detailRecord(date,type,records[key]);
   const id=encodeURIComponent(date);
   if(type==='transfer'&&date==='20')return '';
-  if(type==='ticket'&&Object.hasOwn(flights,date))return itineraryCard('flight',id,'Перелёт',record.service);
+  if(type==='ticket'&&Object.hasOwn(flights,date))return itineraryCard('flight',id,'Перелёт');
   if(type==='hotel')return itineraryCard('stay',id,'Отель',record.name);
   return detailCard(key,type,record);
  }).join('')+'</div>';
@@ -216,17 +216,26 @@ function expenseSummary(){
  return '<section class="card expense-card"><h2>Известные расходы</h2><div class="expense-totals">'+amounts+'</div>'+yuanConversion(yuan,totals.get('RUB'))+'<h3>В составе итога</h3><ul>'+breakdown+'</ul><p class="muted">Для юаней укажите валюту, например 350 CNY или 350 юаней. Сумма без валюты считается рублёвой.</p>'+(uncounted?'<p class="muted">Цен вне итога: '+uncounted+'. Укажите сумму и валюту, например 350 CNY.</p>':'')+'</section>';
 }
 function dayInfo(date,text){
+ if(Object.hasOwn(flights,date))return '';
  const records=tripDetails();
  const present=type=>Object.values(records[date+':'+type]||{}).some(Boolean);
- if(date==='20'&&present('ticket'))return 'Перелёт по плану';
- if(date==='26'&&present('ticket')&&/уточн/.test(text))return '';
  if(date==='18–20'&&present('hotel'))return present('transfer')?'':'Переезд из Ханчжоу уточнить';
  if(date==='23–24'&&present('hotel'))return 'Выезд из Manyuan Resort Hotel 23 января'+(present('transfer')?'':' · транспорт и время уточнить');
- if(date==='25'&&present('hotel'))return text.replace(' · отель на 25 января уточнить','');
  return text;
 }
 function trip(){
- return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+'<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p><div class="days">'+days.map(([date,title,info,cost,city,hotel])=>'<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3><p>'+safe(dayInfo(date,info))+'</p>'+(cost?'<p class="muted">'+safe(dayInfo(date,cost))+'</p>':'')+''+(city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+detailCards(date)+'</div></article>').join('')+'</div></section><section><h2>Города</h2>'+cityCards()+'</section><div class="backup-download"><button type="button" data-export>Скачать резервную копию</button></div>';
+ const itinerary=days.map(([date,title,description,cost,city])=>{
+  const info=dayInfo(date,description);
+  const costInfo=dayInfo(date,cost);
+  return '<article class="card day"><div class="date">'+date+' янв.</div><div><h3>'+safe(title)+'</h3>'+
+   (info?'<p>'+safe(info)+'</p>':'')+(costInfo?'<p class="muted">'+safe(costInfo)+'</p>':'')+
+   (city?'<a class="plain accent" href="#city/'+city+'">Путеводитель: '+cities[city].name+'</a>':'')+
+   detailCards(date)+'</div></article>';
+ }).join('');
+ return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+
+  '<section><h2>Дни поездки</h2><p class="muted">Добавленные данные сохраняются в этом браузере. Цена без валюты — рубли; юани указывайте как CNY или юаней.</p>'+
+  '<div class="days">'+itinerary+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>'+
+  '<div class="backup-download"><button type="button" data-export>Скачать резервную копию</button></div>';
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
 function savedHotel(id){
@@ -258,7 +267,7 @@ function flight(id){
   :record.price?'':'<p class="muted">Стоимость перелёта пока не указана.</p>';
  return hero(day[1],id+' января 2027 · Перелёт')+'<article class="card">'+backToTrip+
   '<p class="muted">Время вылета и прилёта указано местное. Недостающие данные можно добавить в карточку.</p>'+
-  detailCard(key,'ticket',record)+cost+
+  detailCard(key,'ticket',record)+cost+(id==='16'?'<p>'+safe(day[3].split(' · ')[0])+'</p>':'')+
   (id==='20'&&records['20:transfer']?detailCard('20:transfer','transfer',records['20:transfer']):'')+'</article>';
 }
 const dateInRussian=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'});
