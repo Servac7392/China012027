@@ -199,7 +199,8 @@ function detailCard(key,type,record){
    '<form data-trip-detail="'+key+'" data-revision="'+(sharedTrip.records[key]?.revision||'')+'"><div class="detail-fields">'+pairs.map(([name,title])=>
     '<label>'+safe(title)+(name==='addressZh'?'<textarea name="addressZh" lang="zh" rows="3">'+safe(record[name]||'')+'</textarea>':
      '<input name="'+name+'" maxlength="200"'+(name==='departureTime'||name==='arrivalTime'?' placeholder="ЧЧ:ММ"':'')+' value="'+safe(record[name]||'')+'">')+'</label>'
-   ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p></section>';
+   ).join('')+passwordField()+'</div><div class="actions"><button class="primary" type="submit">Сохранить</button></div></form></details><p role="status" class="muted" data-status></p>'+
+   (type==='ticket'?ticketFilesCard(key):'')+'</section>';
 }
 function parseTripPrice(value){
  if(typeof value!=='string')return null;
@@ -454,7 +455,7 @@ function city(id){
  if(category==='routes'||category==='tours') html+=c[category].map(r=>routeCard(id,c,r)).join('');
  return html+'</div></section>';
 }
-function render(){
+function renderPage(){
  const [page,id]=location.hash.slice(1).split('/');
  const activePage=page==='city'?'cities':['cities','saved','expenses'].includes(page)?page:'trip';
  for(const tab of document.querySelectorAll('header nav a')){
@@ -478,9 +479,20 @@ function render(){
  app.innerHTML=trip();
  updateTripClock();
 }
+function render(){
+ renderPage();
+ for(const card of app.querySelectorAll('[data-ticket-files]'))void loadTicketFileList(card);
+}
+app.addEventListener('change',event=>{
+ if(event.target.matches('[data-ticket-pdf]'))void attachTicketFiles(event.target);
+});
 app.addEventListener('click',async event=>{
  const button=event.target.closest('button');
  if(!button)return;
+ if(button.hasAttribute('data-select-ticket-pdf')){
+  button.closest('[data-ticket-files]').querySelector('[data-ticket-pdf]').click();
+  return;
+ }
  if(button.hasAttribute('data-export')){
  const data={details:tripDetails(),favorites:favorites(),version:1};
  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));

@@ -135,3 +135,9 @@ textarea:focus-visible {outline: 3px solid var(--amber);outline-offset: 3px}
 @media(max-width: 550px) {
   .citylink.city-cover {min-height: 155px}
 }
+
+.ticket-files{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.ticket-files p{margin-bottom:0}
+.ticket-files [role="status"]:empty{display:none}
+.ticket-file-list{margin:8px 0;padding-inline-start:20px;overflow-wrap:anywhere}
+.ticket-file-list li+li{margin-top:6px}
