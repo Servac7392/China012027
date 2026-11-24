@@ -178,7 +178,10 @@ function detailCards(date){
   const key=date+':'+type;
   const record=detailRecord(date,type,records[key]);
   if(type==='transfer'&&date==='20')return '';
-  if(type==='ticket'&&Object.hasOwn(flights,date))return itineraryCard('flight',id,'Перелёт');
+  if(type==='ticket'&&Object.hasOwn(flights,date)){
+   const flightRecord=date==='20'?shanghaiFlightRecord(record,records['20:transfer']).record:record;
+   return itineraryCard('flight',id,'Перелёт','',flightMissingFields(flightRecord).length>0);
+  }
   if(type==='hotel')return itineraryCard('stay',id,'Отель',record.name);
   return detailCard(key,type,record);
  }).join('')+'</div>';
@@ -188,10 +191,14 @@ const itineraryIcons={
  transfer:'<path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4"/>',
  stay:'<path d="M3 18v-9m18 9v-7a2 2 0 0 0-2-2h-8v6M3 15h18M3 11h4a2 2 0 0 1 2 2v2m-6 3v2m18-2v2"/>'
 };
-function itineraryCard(page,id,label,name){
+function itineraryCard(page,id,label,name,needsAttention=false){
  const icon='<svg class="itinerary-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+itineraryIcons[page]+'</svg>';
- return '<a class="detail-card itinerary-link" href="#'+page+'/'+id+'">'+icon+'<div class="itinerary-text"><strong>'+label+'</strong>'+
-  (name?'<span>'+safe(name)+'</span>':'')+'</div><span aria-hidden="true" class="itinerary-chevron">›</span></a>';
+ return '<a class="detail-card itinerary-link'+(needsAttention?' needs-attention':'')+'" href="#'+page+'/'+id+'">'+icon+'<div class="itinerary-text"><strong>'+label+'</strong>'+
+  (name?'<span>'+safe(name)+'</span>':'')+(needsAttention?'<span class="attention-badge"><span class="attention-mark" aria-hidden="true">!</span>Требует внимания</span>':'')+'</div><span aria-hidden="true" class="itinerary-chevron">›</span></a>';
+}
+function flightMissingFields(record){
+ const required=['service','airline','departureAirport','departureTime','arrivalAirport','arrivalTime'];
+ return required.filter(name=>!String(record[name]||'').trim());
 }
 function fieldsFor(date,type){
  if(type!=='ticket'||!Object.hasOwn(flights,date))return detailFields[type];
@@ -368,12 +375,15 @@ function flight(id){
  const records=tripDetails(), key=id+':ticket';
  const saved=detailRecord(id,'ticket',records[key]);
  const {record,showTransfer}=id==='20'?shanghaiFlightRecord(saved,records['20:transfer']):{record:saved,showTransfer:false};
+ const missing=flightMissingFields(record);
+ const attention=missing.length?'<p class="flight-attention"><span class="attention-mark" aria-hidden="true">!</span><strong>Требует внимания.</strong> Уточните: '+
+  missing.map(name=>safe(detailFields.flight.fields[name].toLowerCase())).join(', ')+'.</p>':'';
  const booking=flightBookings.find(item=>item.days.includes(id));
  const cost=booking
   ?'<div class="flight-cost"><strong>'+rub(booking.totalRub)+'</strong> · за оба рейса в одном заказе, '+booking.days.join('–')+' января</div>'
   :'';
  return hero(day[1],id+' января 2027 · Перелёт')+'<article class="card">'+backToTrip+
-  '<p class="muted">Время вылета и прилёта указано местное. Недостающие данные можно добавить в карточку.</p>'+
+  attention+'<p class="muted">Время вылета и прилёта указано местное. Недостающие данные можно добавить в карточку.</p>'+
   detailCard(key,'ticket',record)+cost+(id==='16'?'<p>'+safe(day[3].split(' · ')[0])+'</p>':'')+
   (showTransfer?detailCard('20:transfer','transfer',records['20:transfer']):'')+'</article>';
 }
