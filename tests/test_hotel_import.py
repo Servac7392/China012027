@@ -2,7 +2,8 @@ import sys, unittest, json
 from pathlib import Path
 from email.message import EmailMessage
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent/'tools/mailru'))
-from hotel_import import parse_hotel, message_text
+from hotel_import import parse_hotel, message_text, sync_due
+from datetime import datetime,timedelta,timezone
 
 def letter(subject=None, body=None, verified=True):
     message=EmailMessage()
@@ -71,6 +72,16 @@ class ParseTests(unittest.TestCase):
     def test_event_and_booking_keys_stable(self):
         a=parse_hotel(letter(),'token');b=parse_hotel(letter(),'token')
         self.assertEqual(a['eventId'],b['eventId']);self.assertEqual(a['bookingKey'],b['bookingKey'])
+    def test_daily_interval_persists_across_restarts(self):
+        now=datetime(2026,11,26,12,tzinfo=timezone.utc)
+        report={'lastAttemptAt':(now-timedelta(hours=23)).isoformat()}
+        self.assertFalse(sync_due(report,None,now))
+        self.assertTrue(sync_due(report,None,now+timedelta(hours=1)))
+    def test_manual_request_overrides_daily_interval(self):
+        now=datetime.now(timezone.utc)
+        report={'lastAttemptAt':now.isoformat(),'completedRequestId':'old'}
+        self.assertTrue(sync_due(report,'new',now))
+        self.assertFalse(sync_due(report,'old',now))
 
 if __name__=='__main__':unittest.main()
 

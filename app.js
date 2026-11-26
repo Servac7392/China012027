@@ -60,7 +60,8 @@ const flightBookings=[
 const detailKey = 'china-trip-details-v1';
 const detailBackupKey = 'china-trip-details-backup-v1';
 const tripDataUrl = 'https://jlxquozlyjxkkhwvqxiz.supabase.co/functions/v1/trip-data';
-const sharedTrip = {records:{},hotelMeta:{},mailPending:[]};
+const sharedTrip = {records:{},hotelMeta:{},mailPending:[],mailSync:null};
+let mailRefreshBusy=false,mailRefreshError='';
 async function tripData(payload){
  const options={cache:'no-store',signal:AbortSignal.timeout(10000)};
  if(payload)Object.assign(options,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -70,6 +71,7 @@ async function tripData(payload){
  for(const row of data.records)sharedTrip.records[row.key]=row;
  if(data.hotelMeta)sharedTrip.hotelMeta=Object.fromEntries(data.hotelMeta.map(row=>[row.key,row.info]));
  if(data.mailPending)sharedTrip.mailPending=data.mailPending;
+ if(data.mailSync)sharedTrip.mailSync=data.mailSync;
  updateTripClock();
 }
 function tripSaveMessage(error){
@@ -314,6 +316,7 @@ function trip(){
    detailCards(date)+'</div></article>';
  }).join('');
  return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+
+  mailSyncPanel()+
   (sharedTrip.mailPending.length?'<section class="card"><h2>Бронирования требуют внимания</h2>'+sharedTrip.mailPending.map(item=>'<p><strong>'+safe(item.hotel.name||'Отель')+'</strong><br>'+safe((item.hotel.checkin||'?')+' — '+(item.hotel.checkout||'?'))+'<br>'+safe(item.reason)+'. Проверьте даты и внесите сведения в подходящую карточку отеля.</p>').join('')+'</section>':'')+
   '<section><h2>Дни поездки</h2>'+
   '<div class="days">'+itinerary+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>'+
@@ -321,6 +324,44 @@ function trip(){
   '<button type="button" data-export>Скачать резервную копию</button></div>'+localImportForm();
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
+function mailSyncPanel(){
+ const sync=sharedTrip.mailSync||{};
+ const online=Date.now()-Date.parse(sync.worker_seen_at)<90000;
+ const pending=['queued','running'].includes(sync.state);
+ let message='Автоматическая проверка почты — раз в сутки.';
+ if(sync.checked_at){
+  const when=new Intl.DateTimeFormat('ru-RU',{dateStyle:'short',timeStyle:'short'}).format(new Date(sync.checked_at));
+  message+=' Последняя проверка: '+when+'.';
+ }
+ if(pending)message=online?'Проверяем письма и обновляем бронирования…':'Запрос сохранён. Запустите «ChatGPT с Mail.ru» на компьютере — проверка выполнится автоматически.';
+ else if(sync.state==='error')message+=' Проверка не удалась. Можно повторить кнопкой ниже.';
+ else if(sync.state==='complete')message+=' '+(sync.counts?.applied?'Бронирования обновлены.':'Новых подтверждений нет.');
+ if(mailRefreshError)message=mailRefreshError;
+ return '<section class="card mail-sync-panel"><div class="actions"><button type="button" class="primary" data-mail-refresh '+(mailRefreshBusy?'disabled':'')+'>'+(mailRefreshBusy?'Обновляем…':'Обновить данные')+'</button></div><p class="muted" role="status">'+safe(message)+'</p></section>';
+}
+function paintMailSync(){
+ for(const panel of app.querySelectorAll('.mail-sync-panel'))panel.outerHTML=mailSyncPanel();
+}
+async function requestMailRefresh(){
+ if(mailRefreshBusy)return;
+ mailRefreshBusy=true;mailRefreshError='';paintMailSync();
+ try{
+  const response=await fetch(tripDataUrl,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({operation:'request-mail-refresh'}),signal:AbortSignal.timeout(10000)});
+  const data=await response.json();if(!response.ok||!data.mailSync)throw Error('refresh');
+  sharedTrip.mailSync=data.mailSync;paintMailSync();
+  for(let attempt=0;attempt<30&&['queued','running'].includes(sharedTrip.mailSync.state);attempt++){
+   if(Date.now()-Date.parse(sharedTrip.mailSync.worker_seen_at)>90000||!sharedTrip.mailSync.worker_seen_at)break;
+   await new Promise(resolve=>setTimeout(resolve,3000));
+   const status=await fetch(tripDataUrl+'?mail-sync=1',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+   const result=await status.json();if(!status.ok||!result.mailSync)throw Error('refresh');
+   sharedTrip.mailSync=result.mailSync;paintMailSync();
+  }
+  await tripData();
+  if(!app.querySelector('details[open]')&&!app.querySelector('input:focus,textarea:focus'))render();
+ }catch{mailRefreshError='Не удалось отправить запрос. Проверьте интернет и попробуйте ещё раз.';}
+ finally{mailRefreshBusy=false;paintMailSync();}
+}
 function hotelMailInfo(key){
  const meta=sharedTrip.hotelMeta[key];if(!meta||meta.state==='manual')return '';
  const updated=new Date(meta.sourceAt);
@@ -361,7 +402,7 @@ function savedHotel(id){
  const taxi=chineseAddress?'<textarea aria-label="Адрес отеля для такси" lang="zh" rows="3" readonly>'+safe(chineseAddress)+'</textarea>'+
   '<div class="actions"><button type="button" class="primary" data-copy-taxi>Скопировать для такси</button></div><p role="status" class="muted" data-taxi-status></p>':
   '<p class="muted">Уточняется. Его можно внести через «Добавить недостающие данные».</p>';
- return hero(record.name||'Отель',cityName)+'<article class="card">'+backToTrip+
+ return hero(record.name||'Отель',cityName)+mailSyncPanel()+'<article class="card">'+backToTrip+
   hotelMailInfo(key)+detailCard(key,'hotel',record)+(room?'<p>'+safe(room)+'</p>':'')+
   '<section class="taxi-card"><h2>Адрес для такси</h2>'+taxi+'</section>'+
   '<div class="actions">'+(address?link(map(address.split('\n').at(-1)),'На карте'):'')+
@@ -556,6 +597,7 @@ app.addEventListener('change',event=>{
 app.addEventListener('click',async event=>{
  const button=event.target.closest('button');
  if(!button)return;
+ if(button.hasAttribute('data-mail-refresh')){void requestMailRefresh();return;}
  if(button.hasAttribute('data-select-ticket-pdf')){
   button.closest('[data-ticket-files]').querySelector('[data-ticket-pdf]').click();
   return;

@@ -55,27 +55,35 @@ async function hotelTable(path, options = {}) {
 }
 
 async function readTrip() {
-  const [records, hotels, pending] = await Promise.all([table('?select=key,value,revision'), hotelTable('hotel_mail_meta?select=key,info'),
-    hotelTable('hotel_mail_bookings?select=hotel,reason&state=in.(review,review_cancelled)&target_key=is.null')]);
-  if (!records.ok || !hotels.ok || !pending.ok) return response({ error: 'storage' }, 502);
-  return response({ records: await records.json(), hotelMeta: await hotels.json(), mailPending: await pending.json() });
+  const [records, hotels, pending, sync] = await Promise.all([table('?select=key,value,revision'), hotelTable('hotel_mail_meta?select=key,info'),
+    hotelTable('hotel_mail_bookings?select=hotel,reason&state=in.(review,review_cancelled)&target_key=is.null'),hotelTable('hotel_mail_sync?select=state,request_id,requested_at,worker_seen_at,checked_at,counts')]);
+  if (!records.ok || !hotels.ok || !pending.ok || !sync.ok) return response({ error: 'storage' }, 502);
+  return response({ records: await records.json(), hotelMeta: await hotels.json(), mailPending: await pending.json(),mailSync:(await sync.json())[0] });
 }
 
 Deno.serve(async request => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   try {
     if (request.method === 'GET') {
+      if(new URL(request.url).searchParams.has('mail-sync')){
+        const result=await hotelTable('hotel_mail_sync?select=state,request_id,requested_at,worker_seen_at,checked_at,counts');
+        return result.ok?response({mailSync:(await result.json())[0]}):response({error:'storage'},502);
+      }
       return await readTrip();
     }
     if (request.method !== 'POST') return response({ error: 'method' }, 405);
-    const password = Deno.env.get('TRIP_EDIT_PASSWORD');
-    if (!password || [...password].length < 16) return response({ error: 'setup' }, 503);
     const bytes = await request.text();
     if (bytes.length > 13000) return response({ error: 'invalid' }, 413);
     let data;
     try { data = JSON.parse(bytes); }
     catch { return response({ error: 'invalid' }, 400); }
     if (!data || typeof data !== 'object') return response({ error: 'invalid' }, 400);
+    if(data.operation==='request-mail-refresh'){
+      const result=await hotelTable('rpc/request_hotel_mail_refresh',{method:'POST',body:'{}'});
+      return result.ok?response({mailSync:await result.json()}):response({error:'storage'},502);
+    }
+    const password = Deno.env.get('TRIP_EDIT_PASSWORD');
+    if (!password || [...password].length < 16) return response({ error: 'setup' }, 503);
     if (typeof data.password !== 'string' || data.password.length > 2048 || !await matchesPassword(data.password, password)) {
       return response({ error: 'password' }, 403);
     }

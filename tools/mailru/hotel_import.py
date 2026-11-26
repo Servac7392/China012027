@@ -160,8 +160,14 @@ def sync_once(config, token, state_file, send=post_event):
         except Exception: pass
     return count
 
+def sync_due(report, request_id, now):
+    if request_id and request_id!=report.get('completedRequestId'): return True
+    attempted=report.get('lastAttemptAt') or report.get('checkedAt')
+    try: return (now-datetime.fromisoformat(attempted)).total_seconds()>=86400
+    except (TypeError,ValueError): return True
+
 def sync_loop(config, private_folder, unprotect):
-    """Run with the tray's mail process; backfill missed mail after reconnect."""
+    """Check mail once per 24h, or when the website queues a manual refresh."""
     import time
     token_path=private_folder/'import-token.dpapi'
     cursor=private_folder/'hotel-mail-cursor.json'
@@ -169,11 +175,29 @@ def sync_loop(config, private_folder, unprotect):
     while True:
         try:
             token=unprotect(token_path.read_bytes(),decrypt=True).decode()
-            counts=sync_once(config,token,cursor)
-            result={'ok':True,'checkedAt':datetime.now(timezone.utc).isoformat(),'counts':counts}
+            previous=json.loads(report.read_text('utf-8')) if report.exists() else {}
+            try: command=post_event({'operation':'poll'},token)
+            except Exception: command={}
+            request_id=command.get('request_id') if command.get('state') in ('queued','running') else None
+            if sync_due(previous,request_id,datetime.now(timezone.utc)):
+                try: post_event({'operation':'started','requestId':request_id},token)
+                except Exception: pass
+                try:
+                    counts=sync_once(config,token,cursor)
+                    result={'ok':True,'counts':counts}
+                except Exception:
+                    result={'ok':False,'counts':{},'error':'sync_unavailable'}
+                attempted=datetime.now(timezone.utc).isoformat()
+                result.update(checkedAt=attempted,lastAttemptAt=attempted,
+                    completedRequestId=request_id or previous.get('completedRequestId'))
+                temporary=report.with_suffix('.tmp')
+                temporary.write_text(json.dumps(result),'utf-8');temporary.replace(report)
+                try: post_event({'operation':'complete','requestId':request_id,'ok':result['ok'],'counts':result['counts']},token)
+                except Exception: pass
+            elif request_id and previous.get('completedRequestId')==request_id:
+                # A failed acknowledgement must not cause another mailbox scan.
+                post_event({'operation':'complete','requestId':request_id,'ok':previous['ok'],'counts':previous.get('counts',{})},token)
         except Exception:
-            # No email text, addresses, booking IDs or exception messages on disk.
-            result={'ok':False,'checkedAt':datetime.now(timezone.utc).isoformat(),'error':'sync_unavailable'}
-        temporary=report.with_suffix('.tmp')
-        temporary.write_text(json.dumps(result),'utf-8');temporary.replace(report)
-        time.sleep(120)
+            pass
+        # Only check the request queue here; this does not connect to Mail.ru.
+        time.sleep(15)

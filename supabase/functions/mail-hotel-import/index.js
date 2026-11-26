@@ -38,7 +38,19 @@ Deno.serve(async request=>{
   const devices=await database('hotel_import_devices?select=id&enabled=eq.true&token_hash=eq.'+await hash(token));
   if(!devices.ok||!(await devices.json()).length)return reply({error:'unauthorized'},401);
   const raw=await request.text();if(raw.length>10000)return reply({error:'size'},413);
-  const event=JSON.parse(raw);if(!validate(event))return reply({error:'invalid'},400);
+  const event=JSON.parse(raw);
+  if(['poll','started','complete'].includes(event?.operation)){
+    if(Object.keys(event).some(k=>!['operation','requestId','ok','counts'].includes(k)))return reply({error:'invalid'},400);
+    if(event.requestId!==undefined&&event.requestId!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(event.requestId))return reply({error:'invalid'},400);
+    const counts=event.counts||{};
+    if(Object.entries(counts).some(([key,value])=>!['applied','review','skipped','duplicate'].includes(key)||!Number.isSafeInteger(value)||value<0))return reply({error:'invalid'},400);
+    const result=await database('rpc/hotel_mail_worker_control',{method:'POST',body:JSON.stringify({
+      p_operation:event.operation,p_request_id:event.requestId||null,p_ok:event.ok!==false,p_counts:counts
+    })});
+    if(!result.ok)return reply({error:'storage'},502);
+    return reply(await result.json());
+  }
+  if(!validate(event))return reply({error:'invalid'},400);
   const result=await database('rpc/import_mail_hotel',{method:'POST',body:JSON.stringify({e:event})});
   if(!result.ok)return reply({error:'storage'},502);
   return reply(await result.json());
