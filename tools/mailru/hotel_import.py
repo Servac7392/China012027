@@ -61,8 +61,8 @@ def parse_hotel(message, token):
     if sender != 'ru_htl_noreply@trip.com': return None
     subject=clean(message.get('Subject',''))
     if not re.search(r'подтверждение бронирования|бронирование.*отмен|изменени.*бронирован',subject,re.I): return None
-    auth=' '.join(str(v) for v in message.get_all('Authentication-Results',[]))
-    verified=bool(re.search(r'mxs\.mail\.ru;.*?dkim=pass\s+header\.d=trip\.com(?:;|\s)',auth,re.I|re.S))
+    auth=str(message.get('Authentication-Results',''))
+    verified=bool(re.search(r'^mxs\.mail\.ru;.*?dkim=pass\s+header\.d=trip\.com(?:;|\s)',auth,re.I|re.S))
     text=message_text(message)
     lines=[clean(line) for line in text.splitlines() if clean(line)]
     text='\n'.join(lines)
@@ -146,10 +146,12 @@ def sync_once(config, token, state_file, send=post_event):
             raw=next(x[1] for x in parts if isinstance(x,tuple))
             event=parse_hotel(email.message_from_bytes(raw,policy=default),token)
             # Persist only an import cursor; never mail contents or booking IDs.
-            if event:
+            if event and event['verified']:
                 result=send(event,token)
                 action=result.get('action','skipped')
                 count[action if action in count else 'skipped']+=1
+            elif event:
+                count['skipped']+=1
             state={'validity':validity,'uid':uid}
             temporary=state_file.with_suffix('.tmp')
             temporary.write_text(json.dumps(state),'utf-8');temporary.replace(state_file)
