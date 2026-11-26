@@ -60,7 +60,7 @@ const flightBookings=[
 const detailKey = 'china-trip-details-v1';
 const detailBackupKey = 'china-trip-details-backup-v1';
 const tripDataUrl = 'https://jlxquozlyjxkkhwvqxiz.supabase.co/functions/v1/trip-data';
-const sharedTrip = {records:{}};
+const sharedTrip = {records:{},hotelMeta:{},mailPending:[]};
 async function tripData(payload){
  const options={cache:'no-store',signal:AbortSignal.timeout(10000)};
  if(payload)Object.assign(options,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -68,6 +68,8 @@ async function tripData(payload){
  const data=await result.json();
  if(!result.ok)throw new Error(data.error||'storage');
  for(const row of data.records)sharedTrip.records[row.key]=row;
+ if(data.hotelMeta)sharedTrip.hotelMeta=Object.fromEntries(data.hotelMeta.map(row=>[row.key,row.info]));
+ if(data.mailPending)sharedTrip.mailPending=data.mailPending;
  updateTripClock();
 }
 function tripSaveMessage(error){
@@ -182,7 +184,7 @@ function detailCards(date){
    const flightRecord=date==='20'?shanghaiFlightRecord(record,records['20:transfer']).record:record;
    return itineraryCard('flight',id,'Перелёт','',flightMissingFields(flightRecord).length>0);
   }
-  if(type==='hotel')return itineraryCard('stay',id,'Отель',record.name);
+  if(type==='hotel')return itineraryCard('stay',id,'Отель',record.name,Boolean(sharedTrip.hotelMeta[key]?.needsAttention));
   return detailCard(key,type,record);
  }).join('')+'</div>';
 }
@@ -268,11 +270,12 @@ function yuanConversion(cents,rubCents){
 }
 function expenseSummary(){
  const records=tripDetails();
- const bookedHotels=days.reduce((sum,day)=>sum+(day[5]&&!parseTripPrice(records[day[0]+':hotel']?.price)?Math.round(hotels[day[5]][2]*100):0),0);
+ const bookedHotels=days.reduce((sum,day)=>sum+(day[5]&&sharedTrip.hotelMeta[day[0]+':hotel']?.state!=='cancelled'&&!parseTripPrice(records[day[0]+':hotel']?.price)?Math.round(hotels[day[5]][2]*100):0),0);
  const flightBookingCents=flightBookings.reduce((sum,booking)=>sum+booking.totalRub*100,0);
  const categories={ticket:new Map([['RUB',flightBookingCents]]),hotel:new Map([['RUB',bookedHotels]]),transfer:new Map()};
  let uncounted=0;
  for(const [key,record] of Object.entries(records)){
+  if(sharedTrip.hotelMeta[key]?.state==='cancelled')continue;
   if(!record?.price||key==='26:ticket')continue;
   const type=key.split(':')[1];
   if(!Object.hasOwn(categories,type))continue;
@@ -311,12 +314,30 @@ function trip(){
    detailCards(date)+'</div></article>';
  }).join('');
  return hero('Китай · 15–26 января','Ваш маршрут на январь 2027 года','trip-hero')+
+  (sharedTrip.mailPending.length?'<section class="card"><h2>Бронирования требуют внимания</h2>'+sharedTrip.mailPending.map(item=>'<p><strong>'+safe(item.hotel.name||'Отель')+'</strong><br>'+safe((item.hotel.checkin||'?')+' — '+(item.hotel.checkout||'?'))+'<br>'+safe(item.reason)+'. Проверьте даты и внесите сведения в подходящую карточку отеля.</p>').join('')+'</section>':'')+
   '<section><h2>Дни поездки</h2>'+
   '<div class="days">'+itinerary+'</div></section><section><h2>Города</h2>'+cityCards()+'</section>'+
   '<div class="backup-download"><small>Сохранённые на сайте записи видны по обычной ссылке. Цена без валюты считается в рублях. Для юаней указывайте CNY или пишите «юаней».</small>'+
   '<button type="button" data-export>Скачать резервную копию</button></div>'+localImportForm();
 }
 const backToTrip='<p><a class="plain accent" href="#trip">← К маршруту</a></p>';
+function hotelMailInfo(key){
+ const meta=sharedTrip.hotelMeta[key];if(!meta||meta.state==='manual')return '';
+ const updated=new Date(meta.sourceAt);
+ const date=Number.isFinite(updated.getTime())?new Intl.DateTimeFormat('ru-RU',{dateStyle:'short',timeStyle:'short'}).format(updated):'';
+ let html='<section class="mail-hotel-info"><p class="muted">Из письма Trip.com'+(date?' · '+safe(date):'')+'</p>';
+ if(meta.needsAttention)html+='<p class="attention-badge">! '+safe(meta.reason||'Требует внимания')+'</p>';
+ if(meta.state==='cancelled')html+='<p>Бронь отменена. Стоимость исключена из расходов; сведения об отеле сохранены.</p>';
+ if(meta.state==='review'&&meta.proposal){
+  const h=meta.proposal;
+  html+='<h3>Данные из нового письма</h3><p>'+safe(h.name||'Название уточняется')+'</p><p>'+safe((h.checkin||'?')+' — '+(h.checkout||'?'))+'</p>'+
+   (Number.isSafeInteger(h.totalMinor)?'<p>'+safe(new Intl.NumberFormat('ru-RU',{style:'currency',currency:h.currency||'RUB'}).format(h.totalMinor/100))+'</p>':'')+
+   '<form data-hotel-review="'+safe(key)+'" data-revision="'+safe(sharedTrip.records[key]?.revision||'')+'">'+passwordField()+
+   '<div class="actions"><button type="submit" name="decision" value="apply" class="primary">Принять данные из письма</button><button type="submit" name="decision" value="keep">Оставить текущий отель</button></div><p data-status role="status"></p></form>';
+ }
+ if(meta.state==='confirmed')html+='<p>'+[meta.paid?'Оплачено':'',meta.checkinTime?'Заезд после '+meta.checkinTime:'',meta.checkoutTime?'Выезд до '+meta.checkoutTime:''].filter(Boolean).map(safe).join(' · ')+'</p>';
+ return html+'</section>';
+}
 function transferPage(id){
  const day=days.find(([date])=>transferPages.has(date)&&encodeURIComponent(date)===id);
  if(!day)return '';
@@ -336,12 +357,12 @@ function savedHotel(id){
  const cityName=hotels[hotelId]?.[1]||cities[city]?.name||title;
  const chineseAddress=record.addressZh||(/\p{Script=Han}/u.test(record.address||'')?record.address:'');
  const address=chineseAddress||record.address;
- const room=record.name===hotels[hotelId]?.[0]?hotels[hotelId]?.[3]:'';
+ const room=sharedTrip.hotelMeta[key]?.room||(record.name===hotels[hotelId]?.[0]?hotels[hotelId]?.[3]:'');
  const taxi=chineseAddress?'<textarea aria-label="Адрес отеля для такси" lang="zh" rows="3" readonly>'+safe(chineseAddress)+'</textarea>'+
   '<div class="actions"><button type="button" class="primary" data-copy-taxi>Скопировать для такси</button></div><p role="status" class="muted" data-taxi-status></p>':
   '<p class="muted">Уточняется. Его можно внести через «Добавить недостающие данные».</p>';
  return hero(record.name||'Отель',cityName)+'<article class="card">'+backToTrip+
-  detailCard(key,'hotel',record)+(room?'<p>'+safe(room)+'</p>':'')+
+  hotelMailInfo(key)+detailCard(key,'hotel',record)+(room?'<p>'+safe(room)+'</p>':'')+
   '<section class="taxi-card"><h2>Адрес для такси</h2>'+taxi+'</section>'+
   '<div class="actions">'+(address?link(map(address.split('\n').at(-1)),'На карте'):'')+
    hotelBookingLink(key,record)+(city?'<a class="btn" href="#city/'+city+'">Маршруты по городу</a>':'')+'</div></article>';
@@ -575,6 +596,14 @@ function localImportForm(){
 }
 app.addEventListener('submit',async event=>{
  const element=event.target;
+ if(element.dataset.hotelReview){
+  event.preventDefault();const form=new FormData(element),status=element.querySelector('[data-status]');
+  const password=String(form.get('editPassword')||'');element.querySelector('[name=editPassword]').value='';
+  const buttons=element.querySelectorAll('button');buttons.forEach(button=>button.disabled=true);
+  try{await tripData({operation:'resolve-hotel-import',key:element.dataset.hotelReview,revision:element.dataset.revision||null,
+    password,decision:event.submitter?.value});render();}
+  catch(error){status.textContent=tripSaveMessage(error);buttons.forEach(button=>button.disabled=false);}return;
+ }
  const key=element.dataset.tripDetail;
  if(key||element.hasAttribute('data-publish-local')){
   event.preventDefault();
@@ -613,7 +642,12 @@ app.addEventListener('submit',async event=>{
  state.modes[id]=String(form.get('mode'));
  render();
 });
-window.addEventListener('focus',()=>updateTripClock());
+async function refreshTripFromMail(){
+ if(document.hidden||app.querySelector('details[open]')||app.contains(document.activeElement))return;
+ try{await tripData();render();}catch{}
+}
+window.addEventListener('focus',()=>{updateTripClock();void refreshTripFromMail();});
+window.setInterval(()=>void refreshTripFromMail(),30000);
 window.setInterval(updateTripClock,30000);
 window.addEventListener('hashchange',()=>{state.category='places';render();window.scrollTo(0,0);});
 updateTripClock();

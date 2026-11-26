@@ -45,13 +45,27 @@ async function table(query = '', options = {}) {
   });
 }
 
+async function hotelTable(path, options = {}) {
+  const url = Deno.env.get('SUPABASE_URL');
+  const keys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}');
+  const key = keys.default || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const headers = { apikey: key, 'Content-Type': 'application/json' };
+  if (!keys.default) headers.Authorization = 'Bearer ' + key;
+  return fetch(url + '/rest/v1/' + path, { ...options, headers, signal: AbortSignal.timeout(6500) });
+}
+
+async function readTrip() {
+  const [records, hotels, pending] = await Promise.all([table('?select=key,value,revision'), hotelTable('hotel_mail_meta?select=key,info'),
+    hotelTable('hotel_mail_bookings?select=hotel,reason&state=in.(review,review_cancelled)&target_key=is.null')]);
+  if (!records.ok || !hotels.ok || !pending.ok) return response({ error: 'storage' }, 502);
+  return response({ records: await records.json(), hotelMeta: await hotels.json(), mailPending: await pending.json() });
+}
+
 Deno.serve(async request => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   try {
     if (request.method === 'GET') {
-      const result = await table('?select=key,value,revision');
-      if (!result.ok) return response({ error: 'storage' }, 502);
-      return response({ records: await result.json() });
+      return await readTrip();
     }
     if (request.method !== 'POST') return response({ error: 'method' }, 405);
     const password = Deno.env.get('TRIP_EDIT_PASSWORD');
@@ -64,6 +78,18 @@ Deno.serve(async request => {
     if (!data || typeof data !== 'object') return response({ error: 'invalid' }, 400);
     if (typeof data.password !== 'string' || data.password.length > 2048 || !await matchesPassword(data.password, password)) {
       return response({ error: 'password' }, 403);
+    }
+    if (data.operation === 'resolve-hotel-import') {
+      if (typeof data.key !== 'string' || !record(data.key, { name: 'check' }) ||
+          !['apply', 'keep'].includes(data.decision) ||
+          (data.revision !== null && !revisionPattern.test(data.revision))) return response({ error: 'invalid' }, 400);
+      const resolved = await hotelTable('rpc/resolve_mail_hotel', {method:'POST', body:JSON.stringify({
+        p_key:data.key,p_revision:data.revision,p_accept:data.decision==='apply'
+      })});
+      if (!resolved.ok) return response({error:'storage'},502);
+      const result = await resolved.json();
+      if (result.error) return response(result, result.error === 'conflict' ? 409 : 400);
+      return await readTrip();
     }
     if (data.operation === 'import') {
       if (!data.records || typeof data.records !== 'object' || Array.isArray(data.records)) return response({ error: 'invalid' }, 400);
