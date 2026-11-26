@@ -8,8 +8,7 @@ vm.createContext(context);for(const name of ['guide.js','ticket-pdf.js','app.js'
 vm.runInContext(`sharedTrip.records['18–20:hotel']={key:'18–20:hotel',revision:'test',value:{name:'River hotel',address:'Shanghai',addressZh:'上海',stay:'2027-01-18 — 2027-01-20',price:'18904.70 RUB',url:''}};
 sharedTrip.hotelMeta['18–20:hotel']={sourceAt:'2026-11-25T06:01:38Z',state:'confirmed',room:'River view suite',paid:true,checkinTime:'14:00',checkoutTime:'12:00',needsAttention:false};render();`,context);
 assert.match(app.innerHTML,/River hotel/);
-assert.match(app.innerHTML,/Обновить данные/);
-assert.match(app.innerHTML,/раз в сутки/);
+assert.doesNotMatch(app.innerHTML,/Обновить данные|Автоматическая проверка/);
 context.location.hash='#stay/18%E2%80%9320';vm.runInContext('render()',context);
 assert.match(app.innerHTML,/Из письма Trip.com/);assert.match(app.innerHTML,/River view suite/);assert.match(app.innerHTML,/14:00/);assert.match(app.innerHTML,/上海/);
 context.location.hash='#expenses';vm.runInContext('render()',context);const confirmed=app.innerHTML;
@@ -21,7 +20,6 @@ context.location.hash='#stay/18%E2%80%9320';vm.runInContext('render()',context);
 assert.match(app.innerHTML,/Принять данные из письма/);assert.match(app.innerHTML,/Оставить текущий отель/);
 assert.doesNotMatch(app.innerHTML,/<script>alert/);assert.match(app.innerHTML,/&lt;script&gt;/);
 vm.runInContext(`sharedTrip.mailSync={state:'queued',worker_seen_at:null};render()`,context);
-assert.match(app.innerHTML,/Запрос сохранён/);
-assert.match(app.innerHTML,/Запустите «ChatGPT с Mail.ru»/);
+assert.doesNotMatch(app.innerHTML,/Запрос сохранён|Автоматическая проверка/);
 console.log('Hotel placement, source, budget, conflict and escaping checks passed');
 
